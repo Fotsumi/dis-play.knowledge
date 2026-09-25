@@ -10,8 +10,8 @@ A phase is complete only when its gate is satisfied with at least one OBSERVED o
 | 1 | Identity & Resolver | PHASE-1.md | Resolver returns correct candidate for each binding_policy (Auto/Physical/Connector) | COMPLETE |
 | 2 | Capture + Persistence | PHASE-2.md | Profile round-trips through save/load | COMPLETE |
 | 3 | Apply (`apply_profile`) | PHASE-3.md | `apply_profile` applies and verifies topology | COMPLETE |
-| 4 | Verification & Recovery | PHASE-4.md | Verify + recovery paths exercised on real HW | BLOCKED by 3 |
-| 5 | Tray Application | PHASE-5.md | Tray app runs; menu drives apply | BLOCKED by 4 |
+| 4 | Verification & Recovery | PHASE-4.md | Verify + recovery paths exercised on real HW | COMPLETE |
+| 5 | Tray Application | PHASE-5.md | Tray app runs; menu drives apply | COMPLETE |
 | 6 | Hotkeys | PHASE-6.md | Hotkeys registered + fired | BLOCKED by 5 |
 | 7 | Hardening | PHASE-7.md | Error handling, logging, packaging complete | BLOCKED by 6 |
 
