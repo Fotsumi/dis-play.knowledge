@@ -3,30 +3,31 @@
 _Last updated: 2026-09-25_
 
 ## Current Phase
-**Phase 2 — Capture + Persistence (COMPLETE)** → ready for Phase 3 (Apply)
+**Phase 3 — Apply (`apply_profile`) (COMPLETE)** → ready for Phase 4 (Verification & Recovery)
 
 ## Overall Status
-**PHASE 2 GATE COMPLETE — profile capture → save → load round-trips without loss, and the schema is stable across a reboot.** 15/15 tests pass; live round-trip + pre/post-reboot capture OBSERVED on target HW.
+**PHASE 3 GATE COMPLETE — `apply_profile` applies and verifies on real HW.** The carried-forward SetDisplayConfig rc=87 blocker is **RESOLVED**: the root cause was WRONG `SDC_*` flag constants (code passed `0x02` = SDC_TOPOLOGY_CLONE instead of `0x80|0x20`), not struct population. After correction + profile-derived path/mode arrays: `validate work` rc **0** and `apply work` rc **0** OBSERVED on target HW. 23/23 tests pass.
 
 Key findings:
-- **DISCOVERY — this environment IS the target hardware.** `identity`/`dump`/`list` on this host enumerate VIE2701/SAM0D20/TCL9653 with the exact EDID pairs + raw_target_ids of the recorded snapshots. The earlier "this host is not the target hardware" claim is **SUPERSEDED** — the rc=0x57 baseline was the pre-fix QueryDisplayConfig bug on this same machine.
-- **`modeInfoIdx` bitfield unusable (OBSERVED):** raw union value reads `0x1ffff`/`0x4ffff`/`0x7ffff` → masked index 15 (out of range). Resolved via D-106: match SOURCE modes by `mode.id == path.sourceInfo.id`.
-- **Live mode capture works (OBSERVED):** VIE2701 = 2560x1440@320Hz, SAM0D20 = 1920x1080@60Hz **rotated 270°** (portrait — previously unobserved), TCL9653 = 3840x2160@59.94Hz.
-- **`primary` finalized as `Option<bool>` (D-105):** None at capture — changing primary in Windows does NOT change QueryDisplayConfig path order (Phase 0 OBSERVED), so primary cannot be read through this read path. REVISES plan §10 provisional `primary: bool`.
-- **Phase 2 gate criterion 2 NOW OBSERVED (user-run reboot):** `profile capture pre-reboot` → reboot → `profile capture post-reboot`; both parse under `schema_version=1`, `key_evidence` identical across reboot — no field drift.
+- **ROOT CAUSE of rc=87 found (OBSERVED):** the code's `SDC_APPLY=0x00/SDC_VALIDATE=0x01/SDC_USE_SUPPLIED_DISPLAY_CONFIG=0x02/SDC_SAVE_TO_DATABASE=0x04` constants were WRONG — 0x01/0x02/0x04 are `SDC_TOPOLOGY_*`. Every call passed flags=0x02 (`SDC_TOPOLOGY_CLONE` without APPLY/VALIDATE, an invalid combination per the DOCUMENTED flag contract) → ERROR_INVALID_PARAMETER every time, regardless of buffers. Corrected to documented values (0x80/0x40/0x20/0x200); validate/apply now return 0 (D-108).
+- **The `modeInfoIdx` "sentinel" is not corruption:** `0x1ffff`/`0x4ffff`/`0x7ffff` is the DOCUMENTED packed virtual-mode union (`cloneGroupId:16 | sourceModeInfoIdx:16`) QDC returns under QDC_VIRTUAL_MODE_AWARE. D-106 id-matching remains the correct read mapping.
+- **Live APPLY succeeded (OBSERVED):** `apply --i-understand-this-mututes-display-config work` → rc=0; 3 displays enabled in profile order (VIE2701/SAM0D20/TCL9653); post-apply topology unchanged; before/after profiles byte-identical except name label.
+- **Disabled-display (detach) validated (OBSERVED):** `work-notv` (TCL9653 enabled=false) → validate rc=0 → Windows accepts the 2-path topology.
+- **Failed-apply guard (OBSERVED):** profile with no resolvable display → `NoTargets` error, exit 1, SetDisplayConfig never called.
 
 ## Last Completed Work
-- **Phase 2 implemented + tested** (product): profile schema finalized (`model/profile.rs` — `DisplayProfile`, `DisplayEntry` with `role`/`desired_mode`/`primary`/`enabled`, `DisplayRole`, `schema_version=1`); `core/capture.rs` (pure `build_profile`); `core/persistence.rs` (save/load/list under `%LOCALAPPDATA%\display-manager\profiles`); CLI `profile capture|list|show`. **15/15 tests pass** (`cargo test` on this host).
-- **`enumerate_targets` now fills `mode`** per path (D-106: SOURCE mode matched by `mode.id == path.sourceInfo.id`; `modeInfoIdx` bitfield unusable — OBSERVED). `dump` prints source ids + SOURCE-mode sizes.
-- **Live round-trip OBSERVED on target HW:** `profile capture work` → `...\AppData\Local\display-manager\profiles\work.json` (3 displays, full key_evidence + desired_mode); `profile show work` → identical fields.
-- `phases/PHASE-2.md` + `phases/INDEX.md` updated with decisions D-105..D-107, actual results, and the pending reboot procedure.
+- **Phase 3 implemented + tested (product):** `core/apply.rs` (pure `plan_from_profile` — resolver-driven, profile order = path priority); `windows/display_config.rs` — corrected SDC_* flag constants (D-108), `PATH_ACTIVE`/`PATH_MODE_IDX_INVALID`, `candidates_from_paths`, `build_apply_arrays` (compact mode array, explicit sequential `modeInfoIdx`, D-106 source matching + target-id matching), `set_display_config_from_profile` (APPLY vs VALIDATE); `cmd/apply.rs` + `cmd/validate.rs` now operate on saved profiles and print plan/skipped/post-apply topology; `NoTargets`/`NoLivePath` guards. **23/23 tests pass** (8 new). Release build clean (3 remaining warnings = Phase 4 consumers).
+- **Live APPLY OBSERVED (2026-09-25, target HW):** `apply --i-understand-this-mututes-display-config work` → rc=0; 3 displays in order VIE2701→SAM0D20→TCL9653; post-apply topology intact; `before-apply`/`after-apply` profiles identical except name label.
+- **Live VALIDATE OBSERVED:** `validate work` rc=0 (was 87); `validate work-notv` (TV detached) rc=0.
+- **Blocker root cause RECORDED:** wrong SDC flag constants (supersedes the NULL-buffer/struct-population INFERRED causes in PHASE-0.md E6, annotated [SUPERSEDED]).
+- `phases/PHASE-3.md` rewritten (results, decisions D-108..D-112, gate COMPLETE); `phases/INDEX.md` Phase 3 → COMPLETE; `phases/PHASE-0.md` E6 claims annotated `[SUPERSEDED by Phase 3]`.
 
 ## Current Work
-**PHASE 2 GATE COMPLETE.** Both gate criteria satisfied with OBSERVED evidence (round-trip without loss; schema stable across reboot). Next: Phase 3 (Apply).
-- **Phase 3 BLOCKER carried forward:** SetDisplayConfig still returns 87 even with real buffers (E6). D-106 unlocked correct mode capture; Phase 3 must build `DISPLAYCONFIG_PATH_INFO`/`DISPLAYCONFIG_MODE_INFO` arrays from a captured profile + verify struct population — same direction as before.
+**PHASE 3 GATE COMPLETE.** Both gate criteria satisfied with OBSERVED evidence: `apply_profile` applied + topology matched intent (apply rc=0; before/after identical); rc captured for ≥1 successful (0) + ≥1 failed (87 historical + NoTargets guard) apply. Next: Phase 4 (Verification & Recovery).
+- **Phase 4 scope preview:** enforce/verify `desired_mode` (currently preserved not enforced), consume `Ambiguity` fields, verify post-apply state vs intent with honest PARTIAL/FAILED reporting, recovery paths (re-apply, report missing displays). `PlannedTarget.desired_mode` already carried on the plan for this.
 
 ## Next Action
-1. **Advance to Phase 3 (Apply)** — begin the deeper SetDisplayConfig investigation: build path/mode arrays from a captured `DisplayProfile` (D-106 mode mapping is now proven on real HW), resolve entries via resolver, and fix rc=87. **BLOCKER for Phase 3 (apply_profile).**
+1. **Advance to Phase 4 (Verification & Recovery)** — verify applied state vs profile intent after apply (modes + topology), handle unknown/ambiguous entries honestly, define recovery on failure. `Ambiguity.candidates`/`honored` and `PlannedTarget.desired_mode` are staged for it.
 2. E3 (driver update) still DEFERRED to a later date.
 
 ## Phase Gates
@@ -35,7 +36,7 @@ Key findings:
 | 0 | Identity mapping table with stable IDs across reboot/driver-update; primary = path-priority confirmed on real HW | **COMPLETE** (OBSERVED + DOCUMENTED from target HW) |
 | 1 | Resolver returns correct candidate for each binding_policy (Auto/Physical/Connector) | **COMPLETE** (unit tests pass, no Windows calls in resolver logic) |
 | 2 | Capture + persistence round-trips a profile | **COMPLETE** (round-trip OBSERVED; schema stable across reboot OBSERVED) |
-| 3 | `apply_profile` applies and verifies | BLOCKED by Phase 2 (SetDisplayConfig rc=87 carried forward) |
+| 3 | `apply_profile` applies and verifies | **COMPLETE** (apply rc=0 OBSERVED; before/after identical; rc=0 success + rc=87/NoTargets failure) |
 | 4 | Verification + recovery paths exercised | BLOCKED by Phase 3 |
 | 5 | Tray app runs, menu drives apply | BLOCKED by Phase 4 |
 | 6 | Hotkeys registered + fired | BLOCKED by Phase 5 |
@@ -44,7 +45,7 @@ Key findings:
 ## Open Blockers
 - ~~No Rust toolchain~~ — **RESOLVED**: `cargo`/`rustc 1.98.1` available at `C:\Users\Fotsumi\.cargo\bin`; CLI compiles clean + builds release on this host (**OBSERVED**).
 - ~~This host is not the target hardware → live experiments (reboot, driver update, DP swap, TV power cycle) are user-run only.~~ **SUPERSEDED** (2026-09-25): this environment IS the target HW (VIE2701/SAM0D20/TCL9653 enumerate live here). Read-only commands run directly; the reboot experiment is still best done by the user (a reboot would disrupt the session).
-- **SetDisplayConfig rc=87 (E6)** — still returns 87 even with real buffers. **BLOCKER for Phase 3**; deeper struct-population investigation needed (D-106 mode mapping is a step toward it).
+- ~~SetDisplayConfig rc=87 (E6) — still returns 87 even with real buffers. BLOCKER for Phase 3.~~ **RESOLVED (2026-09-25):** root cause = WRONG SDC_* flag constants (code passed 0x02 = SDC_TOPOLOGY_CLONE; documented values are SDC_APPLY=0x80, SDC_VALIDATE=0x40, SDC_USE_SUPPLIED_DISPLAY_CONFIG=0x20, SDC_SAVE_TO_DATABASE=0x200). Corrected (D-108); validate + apply both return 0 on target HW (**OBSERVED**).
 
 ## Remains to be executed on the target Windows machine (exact)
 1. `winget install --id RustLang.Rustup` (or rustup script); confirm `cargo --version`. — **DONE** (toolchain present).
@@ -52,14 +53,15 @@ Key findings:
 3. `cargo build --release`. — **DONE**.
 4. Read-only: `list`, `dump`, `targets`, `pnp`, `identity` — record E1 identity table. — **DONE** (this host IS target HW; `identity`/`dump`/`list` verified live).
 5. Before/after experiments via `snapshot <name>` + `diff <a> <b>`: reboot (E2), driver update (E3), DP cable move (E4), TV power cycle (E5). — **DONE for E2/E4/E5**; E3 (driver update) DEFERRED.
-6. Deliberate gated apply for return-code observation (E6): `apply --i-understand-this-mututes-display-config <snapshot>`. — **DONE** (rc=87 OBSERVED; root cause under investigation).
+6. Deliberate gated apply for return-code observation (E6): `apply --i-understand-this-mututes-display-config <snapshot>`. — **DONE** (rc=87 OBSERVED 2026-09-24; root cause RESOLVED 2026-09-25 = wrong SDC_* flag constants, see Phase 3).
 7. Record all results into `phases/PHASE-0.md` "Actual Results". — **DONE**.
 8. **Phase 2 reboot procedure:** `profile capture pre-reboot` → reboot → `profile capture post-reboot` → `profile show` both → verify `schema_version=1` + unchanged `key_evidence`. — **DONE** (2026-09-25, user-run): both outputs identical, no drift.
+9. **Phase 3 apply procedure:** `validate <profile>` → `apply --i-understand-this-mututes-display-config <profile>` → capture before/after profiles → diff. — **DONE** (2026-09-25, target HW): validate rc=0, apply rc=0, before/after identical. Blocker resolved.
 
 ## Open Questions / Clarifications
 - Exact `windows` crate feature flags and module paths — **RESOLVED** (compiler present on this host; `Win32_Devices_Display` + `Win32_System_Com` verified; struct field spellings confirmed against crate source).
 - Whether `monitorDevicePath` is stable across driver updates (E3) — **DEFERRED** to a later date (user has latest GPU drivers).
-- `modeInfoIdx` semantics under QDC_VIRTUAL_MODE_AWARE — resolved operationally by D-106 (match by source id), but WHY the bitfield reads as a sentinel is **UNKNOWN** (recorded, not blocking).
+- `modeInfoIdx` semantics under QDC_VIRTUAL_MODE_AWARE — **RESOLVED (2026-09-25, Phase 3):** the `0x1ffff`/`0x4ffff`/`0x7ffff` readings are the DOCUMENTED packed virtual-mode union layout (`cloneGroupId:16 | sourceModeInfoIdx:16`), not a corruption. Read-side mapping stays D-106 (match by source id); write-side (SetDisplayConfig input) uses the non-virtual `modeInfoIdx` union member explicitly.
 
 ## Decisions Made
 | ID | Decision | Status |
@@ -76,13 +78,21 @@ Key findings:
 | D-105 | `DisplayEntry.primary` = **`Option<bool>`** (None = not observable at capture); changing primary does NOT change QueryDisplayConfig path order (OBSERVED). REVISES plan §10 `primary: bool` | **FINAL** (OBSERVED) |
 | D-106 | Mode per path = SOURCE mode with `mode.id == path.sourceInfo.id`; `modeInfoIdx` bitfield unusable on this HW (0x1ffff/0x4ffff/0x7ffff — OBSERVED). Rotation from `targetInfo.rotation`, refresh from `targetInfo.refreshRate` rational | **FINAL** (OBSERVED + DOCUMENTED) |
 | D-107 | Profile storage: pretty JSON `%LOCALAPPDATA%\display-manager\profiles\<name>.json`; `schema_version` (1) for drift detection; `role` stays None at capture (no stable slot key) | FINAL |
+| D-108 | Correct SDC_* flag constants to DOCUMENTED values (SDC_APPLY=0x80, SDC_VALIDATE=0x40, SDC_USE_SUPPLIED_DISPLAY_CONFIG=0x20, SDC_SAVE_TO_DATABASE=0x200). Previous 0x00/0x01/0x02/0x04 were WRONG (0x01/0x02/0x04 = SDC_TOPOLOGY_*) and caused every SetDisplayConfig call to fail with 87 | **FINAL** (OBSERVED: validate/apply 87→0) |
+| D-109 | `apply`/`validate` operate on saved **profiles** (Phase 2 format), resolving each entry via the Phase 1 resolver (`plan_from_profile`) | FINAL |
+| D-110 | Path array = one `DISPLAYCONFIG_PATH_INFO` per enabled entry in **profile order (= path-priority order, primary first)**, `flags = DISPLAYCONFIG_PATH_ACTIVE`; disabled entries omitted (detach semantics) | FINAL (OBSERVED: work-notv validate rc=0) |
+| D-111 | Mode array rebuilt compactly from live QDC modes (SOURCE by `mode.id == path.sourceInfo.id`, TARGET by `mode.id == path.targetInfo.id`), explicit sequential `modeInfoIdx` (4-bit, ≤15); missing → `PATH_MODE_IDX_INVALID` (best-mode) | FINAL (OBSERVED: validate rc=0) |
+| D-112 | V1 apply keeps the **live current mode** per display; `desired_mode` carried on plan but NOT yet enforced (mode-change = Phase 4/5 scope) | FINAL (scope) |
 
 ## Decisions Pending Evidence
-_None — all Phase 0, Phase 1 and Phase 2 decisions resolved to FINAL._
+_None — all Phase 0–3 decisions resolved to FINAL._
 
 ## Important Discoveries (this session)
+- **ROOT CAUSE of SetDisplayConfig rc=87 found (2026-09-25):** the SDC_* flag constants in `display_config.rs` were WRONG — code passed `0x00|0x02` = SDC_TOPOLOGY_CLONE (no APPLY/VALIDATE, invalid per DOCUMENTED flag contract). Corrected to 0x80/0x40/0x20/0x200 (D-108); validate + apply now return 0 (**OBSERVED**). Supersedes the earlier NULL-buffer / struct-population INFERRED causes.
+- **`modeInfoIdx` "sentinel" is the DOCUMENTED packed virtual-mode union** (`cloneGroupId:16 | sourceModeInfoIdx:16`) returned under QDC_VIRTUAL_MODE_AWARE — not a bitfield corruption. D-106 read mapping stands.
+- **Live APPLY works (OBSERVED):** `apply work` → rc=0; 3 displays applied in profile/path-priority order; post-apply topology unchanged; before/after profiles byte-identical except name label.
+- **Disabled-display topology is settable (OBSERVED):** `validate work-notv` (TCL9653 detached) → rc=0 — Windows accepts excluding a target from the active path set.
 - **This environment IS the target hardware** (SUPERSEDES "this host is not the target HW"): `identity`/`dump`/`list` enumerate VIE2701/SAM0D20/TCL9653 with EDID + raw_target_ids matching the recorded Phase 0 snapshots. The rc=0x57 baseline was the pre-fix QueryDisplayConfig bug on this same machine.
-- **`modeInfoIdx` bitfield unusable** (OBSERVED): raw union value `0x1ffff`/`0x4ffff`/`0x7ffff` (masked index 15 > 9 modes). Robust mapping = SOURCE mode `id == path.sourceInfo.id` (D-106).
 - **SAM0D20 is in portrait** (`rotation=270`, OBSERVED via live capture) — previously unrecorded topology detail.
 - SetDisplayConfig fully documented: winuser.h/User32.dll; flags SDC_APPLY/SDC_VALIDATE/SDC_USE_SUPPLIED_DISPLAY_CONFIG/SDC_SAVE_TO_DATABASE; return codes incl ERROR_ACCESS_DENIED. **DOCUMENTED**
 - Primary = path priority order (lower array index = higher priority). **DOCUMENTED** — but NOT readable back from QueryDisplayConfig output order (OBSERVED), hence D-105.
@@ -105,6 +115,11 @@ _None — all Phase 0, Phase 1 and Phase 2 decisions resolved to FINAL._
 - **Phase 2 tests — OBSERVED 2026-09-25:** `cargo test` on this host → **15/15 pass** (7 resolver + 4 capture + 4 persistence). New: `build_profile` emits one entry per candidate keyed on D-P2 evidence; captured entries re-resolve uniquely (`captured_entries_re_resolve_uniquely`); desired_mode round-trips; JSON + file round-trips equal; list finds only JSON; missing profile errors.
 - **Phase 2 live capture — OBSERVED 2026-09-25 (this host = target HW):** `profile capture work` → `C:\Users\Fotsumi\AppData\Local\display-manager\profiles\work.json` (3 displays; desired_mode 2560x1440@320 / 1920x1080@60 rotated-270 / 3840x2160@59.94); `profile show work` → identical fields (round-trip without loss). `dump` now shows source ids + SOURCE-mode sizes; `modeInfoIdx` bitfield sentinel observed (`0x1ffff`/`0x4ffff`/`0x7ffff`).
 - **Phase 2 reboot stability — OBSERVED 2026-09-25 (user-run on target HW):** `profile capture pre-reboot` → reboot → `profile capture post-reboot`; `profile show` both → **identical** (`schema_version=1`, same `key_evidence` path prefixes + EDIDs, same desired_mode/enabled/primary fields, no drift). Satisfies Phase 2 gate criterion 2.
+- **Phase 3 validate after flag fix — OBSERVED 2026-09-25 (target HW):** `validate work` → `SetDisplayConfig (SDC_VALIDATE) returned 0` (was 87). Corrected SDC_* flags (D-108) + profile-derived path/mode arrays validate clean against the live 3-display topology. **Blocker resolved.**
+- **Phase 3 live APPLY — OBSERVED 2026-09-25 (target HW, user-approved gated):** `apply --i-understand-this-mututes-display-config work` → `SetDisplayConfig returned 0`; plan = 3 targets in profile order (VIE2701→SAM0D20→TCL9653); post-apply topology path[0..2] = (768,0)/(776,1)/(780,2) unchanged. T3.3: `before-apply`/`after-apply` profiles identical except name label → post-apply state == intent.
+- **Phase 3 disabled-display VALIDATE — OBSERVED 2026-09-25:** `work-notv` (TCL9653 `enabled=false`) → `validate work-notv` → rc=0 → Windows accepts the 2-path (TV detached) topology. (Destructive APPLY of it not run.)
+- **Phase 3 failed-apply guard — OBSERVED 2026-09-25:** `validate ghost` / `apply … ghost` (entry for non-existent display NOPE000) → `error: profile resolved to no enabled targets (refusing to call SetDisplayConfig)`, exit=1 — SetDisplayConfig never called with an empty plan.
+- **Phase 3 tests — OBSERVED 2026-09-25:** `cargo test` → **23/23 pass** (15 prior + 4 apply-plan + 4 build_apply_arrays). New: plan preserves profile order; disabled/Unknown/Ambiguous entries skipped; build_apply_arrays assigns sequential modeInfoIdx (SOURCE+TARGET), falls back to best-mode (target-only→INVALID, missing-source→both INVALID), errors on missing live path. Release build clean (3 warnings = Phase 4 consumers).
 
 ## Documents Affected by New Findings
 - `phases/PHASE-0.md` updated: E2 reboot stability NOW OBSERVED (raw_target_id + monitor_device_path PREFIX stable across reboots); E5 confirmed NOT observable for TV on this HW (always-on feature — EDID responds even in "off" state); SetDisplayConfig FIX APPLIED (loads snapshot + real buffers, no longer NULL).
@@ -115,10 +130,13 @@ _None — all Phase 0, Phase 1 and Phase 2 decisions resolved to FINAL._
 
 - **This session (2026-09-25):** `phases/PHASE-2.md` rewritten with actual results + decisions D-105..D-107 + pending reboot procedure; `phases/INDEX.md` Phase 2 row updated to IN PROGRESS (implementation done, reboot evidence pending). `STATUS.md` advanced to Phase 2 in progress.
 - **This session (2026-09-25, follow-up):** Phase 2 gate criterion 2 evidence recorded (reboot round-trip OBSERVED, user-run) → `phases/PHASE-2.md` gate both checked, Status → **COMPLETE**; `phases/INDEX.md` → COMPLETE; `STATUS.md` advanced to Phase 2 complete / ready for Phase 3.
+- **This session (2026-09-25, Phase 3):** `phases/PHASE-3.md` rewritten — rc=87 root cause (wrong SDC flags) + results + decisions D-108..D-112, gate **COMPLETE**; `phases/INDEX.md` Phase 3 → COMPLETE; `phases/PHASE-0.md` E6 root-cause claims annotated `[SUPERSEDED by Phase 3]`; `product/README.md` updated (apply/validate take profiles). `STATUS.md` advanced to Phase 3 complete / ready for Phase 4.
 
 ## Product Implementation Status
 CLI source **compiles clean + builds release** in `product/`. Read-only commands execute on this host (**OBSERVED**). `product/.gitignore` already ignores `target/`, `debug/`.
 
-**Phase 2 additions:** `model/profile.rs` (new) — finalized `DisplayProfile`/`DisplayEntry` (`role`, `desired_mode`, `primary: Option<bool>`, `enabled`, `schema_version`) + `DisplayRole`; `DisplayEntry` moved out of `model/candidate.rs` (plan §18 layout); `core/capture.rs` (new, pure `build_profile`/`entry_from_candidate`); `core/persistence.rs` (new, save/load/list under `%LOCALAPPDATA%`); `cmd/profile.rs` (new, `profile capture|list|show`); `windows/display_config.rs` `enumerate_targets` now fills `mode` (D-106); `dump` prints source ids + SOURCE-mode sizes. 15/15 tests pass; release build clean (7 pre-existing resolver dead-code warnings — resolver wiring lands in Phase 3 apply).
+**Phase 2 additions:** `model/profile.rs` (new) — finalized `DisplayProfile`/`DisplayEntry` (`role`, `desired_mode`, `primary: Option<bool>`, `enabled`, `schema_version`) + `DisplayRole`; `DisplayEntry` moved out of `model/candidate.rs` (plan §18 layout); `core/capture.rs` (new, pure `build_profile`/`entry_from_candidate`); `core/persistence.rs` (new, save/load/list under `%LOCALAPPDATA%`); `cmd/profile.rs` (new, `profile capture|list|show`); `windows/display_config.rs` `enumerate_targets` now fills `mode` (D-106); `dump` prints source ids + SOURCE-mode sizes. 15/15 tests pass.
 
-**Note:** `profile capture` writes a profile JSON under `%LOCALAPPDATA%` — read-only with respect to display config (never calls SetDisplayConfig). A smoke-test profile `work.json` currently exists there from the live capture above.
+**Phase 3 additions:** `core/apply.rs` (new, pure `plan_from_profile` — resolver-driven apply plan, profile order = path priority); `windows/display_config.rs` — corrected SDC_* flags (D-108), `PATH_ACTIVE`/`PATH_MODE_IDX_INVALID`, `candidates_from_paths`, `build_apply_arrays`, `set_display_config_from_profile(APPLY|VALIDATE)`; `cmd/apply.rs` + `cmd/validate.rs` operate on profiles + report plan/skipped/post-apply topology; `error.rs` +`NoTargets`/`NoLivePath`. **23/23 tests pass**; release build clean (3 pre-existing warnings on `Ambiguity` fields = Phase 4 consumers).
+
+**Note:** `profile capture` writes a profile JSON under `%LOCALAPPDATA%` — read-only with respect to display config (never calls SetDisplayConfig). `apply`/`validate` now target saved profiles. Experiment profiles currently present: `work` (gate apply), `before-apply`/`after-apply` (T3.3 evidence), `work-notv` (disabled-TV validate fixture), `ghost` (failed-apply guard fixture).
