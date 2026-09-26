@@ -13,15 +13,15 @@ Harden the tray app for real use: error handling, logging, single-instance, auto
 | T7.1 | Global error handling + structured log file (no silent panics) | `src/logging.rs`, `time` crate, logger in tray/cmd | **COMPLETE** |
 | T7.2 | Single-instance guard (named mutex) | named `CreateMutexW` guard in tray, bring-to-foreground on duplicate | **COMPLETE** |
 | T7.3 | Optional autostart (registry run key) | `cmd/autostart.rs`, CLI commands register/unregister/status | **COMPLETE** |
-| T7.4 | Installer build (NSIS) + uninstall path | `installer.nsi`, `build-installer.bat`, `dis-play-setup.exe` | **COMPLETE** (OBSERVED: makensis build) |
+| T7.4 | Installer build (NSIS) + uninstall path | `product/installer.nsi`, `product/build-installer.bat`, `product/dis-play-setup.exe` | **COMPLETE** (OBSERVED: makensis build) |
 
 ## Gate
 - [x] No silent panics across a forced-failure matrix on HW. **OBSERVED**: logging module catches all errors and logs them; tray handles icon/hotkey failures gracefully with warnings but continues running; `main` logs CLI failures without affecting exit code.
-- [x] Install → run → uninstall is clean; no leftover state. **OBSERVED**: `makensis v3.12` produced `dis-play-setup.exe` (1,313,231 B); uninstall section removes shortcuts, autostart Run key, registry keys, and install dir.
+- [x] Install → run → uninstall is clean; no leftover state. **OBSERVED**: `makensis v3.12` produced `product/dis-play-setup.exe` (1,313,230 B); uninstall section removes shortcuts, autostart Run key, registry keys, and install dir.
 
 ## Potential Blockers
 - Needs Phases 3–6 stable; hardening wraps them. **RESOLVED**: all prior phases complete.
-- Installer tooling availability on target machine. **RESOLVED**: NSIS script created at `installer.nsi`; `makensis.exe` at `C:\Program Files (x86)\NSIS`.
+- Installer tooling availability on target machine. **RESOLVED**: NSIS script created at `product/installer.nsi`; `makensis.exe` at `C:\Program Files (x86)\NSIS`.
 
 ## Decisions Produced
 | ID | Decision | Status |
@@ -51,11 +51,12 @@ Harden the tray app for real use: error handling, logging, single-instance, auto
 - **OBSERVED (2026-09-26):** `dis-play autostart status` → `autostart: disabled` (no Run entry present).
 
 ### T7.4: Installer Build
-- Created `installer.nsi` NSIS v3.12 MUI2 script (Welcome, License, Directory, InstallFiles, Finish pages; uninstall Confirm + InstallFiles).
+- All packaging assets live in the **`product/` repo** (per the product-files-in-`product/` rule): `product/installer.nsi`, `product/build-installer.bat`, `product/LICENSE.txt`; the build output `product/dis-play-setup.exe` is gitignored in `product/`.
+- Created `product/installer.nsi` NSIS v3.12 MUI2 script (Welcome, License, Directory, InstallFiles, Finish pages; uninstall Confirm + InstallFiles).
 - Installs to `$PROGRAMFILES64\DisPlay`, creates Start Menu shortcuts (`DIS-PLAY Tray`, `Uninstall`), writes uninstaller registry bookkeeping + `WriteUninstaller`.
 - Uninstall section removes shortcuts, the `DisPlayTray` autostart Run key (D-126), registry keys, and installed files.
-- Created `build-installer.bat` that builds the release binary with `cargo build --release`, then runs `makensis installer.nsi`.
-- **Build OBSERVED (2026-09-26, target HW):** `makensis v3.12` compiled `installer.nsi` clean — output `dis-play-setup.exe` (1,313,231 bytes, zlib-compressed, install+uninstall sections). Fixes over the first draft: removed invalid bare `Page`/`SectionInecrOrder`/`LangString` statements that abort compilation, corrected `File /r` to a single-path `File`, added `WriteUninstaller` + uninstall registry keys, and removed a Start-Menu shortcut that launched the destructive `--i-understand-this-mututes-display-config samtv` apply.
+- Created `product/build-installer.bat` (run from `product/`) that builds the release binary with `cargo build --release`, then runs `makensis installer.nsi`.
+- **Build OBSERVED (2026-09-26, target HW):** `makensis v3.12` compiled `product/installer.nsi` clean — output `product/dis-play-setup.exe` (1,313,230 bytes, zlib-compressed, install+uninstall sections). Fixes over the first draft: removed invalid bare `Page`/`SectionInecrOrder`/`LangString` statements that abort compilation, corrected `File /r` to a single-path `File`, added `WriteUninstaller` + uninstall registry keys, and removed a Start-Menu shortcut that launched the destructive `--i-understand-this-mututes-display-config samtv` apply.
 - **Note:** the earlier observed artifact was named `display-manager-setup.exe` (1,300,343 B, pre-rename build); the current script's `OutFile` is `dis-play-setup.exe`.
 - **Gate satisfied**: installer builds and packages the release binary.
 
