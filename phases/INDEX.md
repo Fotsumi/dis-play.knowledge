@@ -12,7 +12,7 @@ A phase is complete only when its gate is satisfied with at least one OBSERVED o
 | 3 | Apply (`apply_profile`) | PHASE-3.md | `apply_profile` applies and verifies topology | COMPLETE |
 | 4 | Verification & Recovery | PHASE-4.md | Verify + recovery paths exercised on real HW | COMPLETE |
 | 5 | Tray Application | PHASE-5.md | Tray app runs; menu drives apply | COMPLETE |
-| 6 | Hotkeys | PHASE-6.md | Hotkeys registered + fired | BLOCKED by 5 |
+| 6 | Hotkeys | PHASE-6.md | Hotkeys registered + fired | COMPLETE |
 | 7 | Hardening | PHASE-7.md | Error handling, logging, packaging complete | BLOCKED by 6 |
 
 ## Cross-phase invariants (apply to every phase)
