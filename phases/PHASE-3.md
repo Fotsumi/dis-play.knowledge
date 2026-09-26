@@ -69,7 +69,7 @@ Product changes (in `product/`; `cargo build --release` + `cargo test` 23/23 on 
 | ID | Decision | Status |
 |---|---|---|
 | D-108 | Correct SDC_* flag constants to DOCUMENTED values (SDC_APPLY=0x80, SDC_VALIDATE=0x40, SDC_USE_SUPPLIED_DISPLAY_CONFIG=0x20, SDC_SAVE_TO_DATABASE=0x200). The previous 0x00/0x01/0x02/0x04 values were wrong (those are SDC_TOPOLOGY_* ) and caused every SetDisplayConfig call to fail with ERROR_INVALID_PARAMETER (87). | **FINAL** (OBSERVED: validate/apply 87→0) |
-| D-109 | `apply`/`validate` operate on saved **profiles** (Phase 2 `%LOCALAPPDATA%\display-manager\profiles`) — not Phase 0 `.snapshots/` — and resolve each entry via the Phase 1 resolver (plan_from_profile). | FINAL |
+| D-109 | `apply`/`validate` operate on saved **profiles** (Phase 2 `%LOCALAPPDATA%\dis-play\profiles`) — not Phase 0 `.snapshots/` — and resolve each entry via the Phase 1 resolver (plan_from_profile). | FINAL |
 | D-110 | Path array = one `DISPLAYCONFIG_PATH_INFO` per enabled entry in **profile order (= path-priority order, primary first)** with `flags = DISPLAYCONFIG_PATH_ACTIVE`; disabled entries' paths are omitted (detach semantics). | FINAL (OBSERVED: work-notv validate rc=0) |
 | D-111 | Mode array rebuilt compactly from live QDC modes: SOURCE by `mode.id == path.sourceInfo.id` (D-106), TARGET by `mode.id == path.targetInfo.id`, with explicit sequential `modeInfoIdx` (4-bit, ≤15); missing modes → `PATH_MODE_IDX_INVALID` (best-mode logic). | FINAL (OBSERVED: validate rc=0) |
 | D-112 | V1 apply keeps the **live current mode** per display (mode array sourced from the current topology) — `desired_mode` is carried on the plan but not yet enforced; mode-change enforcement is Phase 4/5 scope. | FINAL (scope) |

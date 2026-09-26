@@ -430,9 +430,9 @@ V1 should exclude:
 Build a CLI:
 
 ```text
-display-manager list
-display-manager identify
-display-manager dump
+dis-play list
+dis-play identify
+dis-play dump
 ```
 
 Goal: prove Windows exposes enough information.

@@ -4,7 +4,7 @@
 Capture the current display state into a serializable profile and round-trip it through save/load, so `apply_profile` (Phase 3) has something to apply. Finalizes the `DisplayEntry` schema deferred by D-101 (plan §10).
 
 ## Scope
-- In: capture current topology → `DisplayProfile`; serialize/deserialize (serde JSON); store under `%LOCALAPPDATA%\display-manager\profiles`; round-trip tests.
+- In: capture current topology → `DisplayProfile`; serialize/deserialize (serde JSON); store under `%LOCALAPPDATA%\dis-play\profiles`; round-trip tests.
 - Out: applying the profile (Phase 3), verification (Phase 4).
 
 ## Tasks
@@ -38,7 +38,7 @@ Result (OBSERVED): both `profile show` outputs identical across reboot — VIE27
 |---|---|---|
 | D-105 | `DisplayEntry.primary` is **`Option<bool>`** (NOT plain `bool`): `None` = not observable at capture. Rationale: changing primary in Windows does NOT change QueryDisplayConfig path order (**OBSERVED** Phase 0), so a captured `primary` value cannot be read through this read path. **REVISES plan §10 provisional `primary: bool`.** | **FINAL** (OBSERVED) |
 | D-106 | Mode lookup per path uses **SOURCE mode with `mode.id == path.sourceInfo.id`**; `path.sourceInfo.modeInfoIdx` is a 4-bit bitfield whose raw union value reads as an unusable sentinel on this HW (`0x1ffff`/`0x4ffff`/`0x7ffff` — OBSERVED 2026-09-25), so index-based lookup is not viable. Rotation from `path.targetInfo.rotation`; refresh from `path.targetInfo.refreshRate` rational. | **FINAL** (OBSERVED + DOCUMENTED SDK struct layout) |
-| D-107 | Profile storage: pretty JSON at `%LOCALAPPDATA%\display-manager\profiles\<name>.json`; `DisplayProfile` carries `schema_version` (currently `1`) for drift detection (Phase 2 gate). `role` stays `Option<DisplayRole>` and `None` at capture — no stable slot key exists (`connectorInstance` volatile/duplicated, E4). | **FINAL** |
+| D-107 | Profile storage: pretty JSON at `%LOCALAPPDATA%\dis-play\profiles\<name>.json`; `DisplayProfile` carries `schema_version` (currently `1`) for drift detection (Phase 2 gate). `role` stays `Option<DisplayRole>` and `None` at capture — no stable slot key exists (`connectorInstance` volatile/duplicated, E4). | **FINAL** |
 
 ## Actual Results
 - T2.1 done: `core/capture.rs` — pure `build_profile(name, candidates)` + `entry_from_candidate()`. No FFI. Each entry keys on D-P2 evidence (`path_prefix` + EDID), `binding_policy` default `Auto`, `role=None`, `primary=None`, `desired_mode` from candidate mode, `enabled` from candidate `connected`.
@@ -47,7 +47,7 @@ Result (OBSERVED): both `profile show` outputs identical across reboot — VIE27
 - `model/profile.rs` created: `DisplayProfile` + finalized `DisplayEntry` + `DisplayRole`. `DisplayEntry` moved out of `candidate.rs` (plan §18 layout). `model/candidate.rs` keeps `DisplayCandidate`, `ModeInfo`, `Snapshot`, `BindingPolicy`, `IdentityEvidence` (+`PartialEq` for round-trip equality).
 - `windows/display_config.rs` `enumerate_targets()` now fills `mode` per path (D-106). `dump` prints source ids + SOURCE-mode width/height.
 - CLI: `profile capture <name>`, `profile list`, `profile show <name>` wired into `main.rs` (read-only — writes profile JSON only, never calls SetDisplayConfig).
-- **Live target-HW capture OBSERVED 2026-09-25:** `profile capture work` → `C:\Users\Fotsumi\AppData\Local\display-manager\profiles\work.json`, 3 displays, `desired_mode` = 2560x1440@320Hz (VIE2701), 1920x1080@60Hz rotated 270° (SAM0D20 — portrait), 3840x2160@59.94Hz (TCL9653). `profile show work` round-tripped identical fields.
+- **Live target-HW capture OBSERVED 2026-09-25:** `profile capture work` → `C:\Users\Fotsumi\AppData\Local\dis-play\profiles\work.json`, 3 displays, `desired_mode` = 2560x1440@320Hz (VIE2701), 1920x1080@60Hz rotated 270° (SAM0D20 — portrait), 3840x2160@59.94Hz (TCL9653). `profile show work` round-tripped identical fields.
 - **DISCOVERY:** this environment IS the target hardware (VIE2701/SAM0D20/TCL9653 enumerate live here; EDID + raw_target_ids match recorded snapshots). The earlier "this host is not the target hardware" claim is **SUPERSEDED** — the rc=0x57 baseline was the pre-fix QueryDisplayConfig bug on this same machine, not a different machine.
 - **Reboot round-trip OBSERVED 2026-09-25 (user-run on target HW):** `profile capture pre-reboot` → reboot → `profile capture post-reboot`. Both parse under `schema_version=1`; `key_evidence` + field set identical across reboot (no drift).
 

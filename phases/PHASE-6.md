@@ -24,14 +24,14 @@ Register global hotkeys that trigger `apply_profile` for a chosen Profile, so th
 ## Decisions Produced
 | ID | Decision | Status |
 |---|---|---|
-| D-122 | The global hotkey (Ctrl+Alt+D) **toggles between a configured pair of profiles** (`%LOCALAPPDATA%\display-manager\config\hotkeys.json`, e.g. `["samtv","samtv-notv"]`), applied via `toggle_other` — deterministic and independent of verification results. REJECTS the initial design where the hotkey cycled from `last-known-good.source` through ALL saved profiles: that design was **OBSERVED to wedge** on HW — lkg only advances on verification OK, so a persistent mismatch (a display taken away for repair) made every press re-apply the same profile forever. | **FINAL** (OBSERVED: toggle worked press1 `samtv-notv`/press2 `samtv`, both verification OK) |
+| D-122 | The global hotkey (Ctrl+Alt+D) **toggles between a configured pair of profiles** (`%LOCALAPPDATA%\dis-play\config\hotkeys.json`, e.g. `["samtv","samtv-notv"]`), applied via `toggle_other` — deterministic and independent of verification results. REJECTS the initial design where the hotkey cycled from `last-known-good.source` through ALL saved profiles: that design was **OBSERVED to wedge** on HW — lkg only advances on verification OK, so a persistent mismatch (a display taken away for repair) made every press re-apply the same profile forever. | **FINAL** (OBSERVED: toggle worked press1 `samtv-notv`/press2 `samtv`, both verification OK) |
 | D-123 | Taskbar icon = **`taskbar-icon.png` at the knowledge repo root, embedded at compile time (`include_bytes!`) and decoded to `HICON` via GDI+** (`GdipCreateBitmapFromFile` → `GdipCreateHICONFromBitmap`, temp file for the file-based decoder). Replaces the Phase 5 `LoadIcon(IDI_APPLICATION)` placeholder (D-120 deferral). Relative-path cross-repo reference per AGENTS.md; failure degrades to the system icon with a warning, never a crash. | **FINAL** (OBSERVED: `tray: icon installed` with no decode warning on target HW) |
 
 ## Actual Results
 _Phase 6 executed 2026-09-26 on target HW (this host)._
 
 ### T6.1 — Hotkey registration (OBSERVED)
-`display-manager tray` → `tray: icon installed; ...` + `tray: hotkey registered: Ctrl+Alt+D toggles the configured profile pair`. `RegisterHotKey(Some(hwnd), id, MOD_ALT|MOD_CONTROL|MOD_NOREPEAT, VK_D)` posts `WM_HOTKEY` to the tray window, handled in the same WndProc as the tray icon.
+`dis-play tray` → `tray: icon installed; ...` + `tray: hotkey registered: Ctrl+Alt+D toggles the configured profile pair`. `RegisterHotKey(Some(hwnd), id, MOD_ALT|MOD_CONTROL|MOD_NOREPEAT, VK_D)` posts `WM_HOTKEY` to the tray window, handled in the same WndProc as the tray icon.
 
 ### T6.2 — Hotkey fire → apply (OBSERVED, user-run on target HW)
 With `hotkeys.json = {"profiles": ["samtv", "samtv-notv"]}` and lkg = `samtv` (TV on):

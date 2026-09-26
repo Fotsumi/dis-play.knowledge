@@ -218,12 +218,12 @@ Invariant: **`core/` and `model/` never call Win32**, so the critical subsystems
 A diagnostic CLI whose purpose is to empirically establish, on the developer's actual machine, how Windows connects DisplayConfig targets to PnP devices / connectors / EDID-derived info. Commands:
 
 ```text
-display-manager list        # enumerate detected displays with runtime state (connected/active/mode)
-display-manager dump       # full QueryDisplayConfig source/target/mode dump per adapter
-display-manager targets    # per target: DisplayConfigGetDeviceInfo → monitorDevicePath, friendly name
-display-manager pnp        # resolve each monitorDevicePath via SetupDi*/CfgMgr32 → instance ID + Hardware IDs
-display-manager identity   # join the above into one table (the mapping below)
-display-manager experiment # run a specific spike (e.g., power TV off/on; move DP1→DP2; reboot/driver-update) and diff
+dis-play list        # enumerate detected displays with runtime state (connected/active/mode)
+dis-play dump       # full QueryDisplayConfig source/target/mode dump per adapter
+dis-play targets    # per target: DisplayConfigGetDeviceInfo → monitorDevicePath, friendly name
+dis-play pnp        # resolve each monitorDevicePath via SetupDi*/CfgMgr32 → instance ID + Hardware IDs
+dis-play identity   # join the above into one table (the mapping below)
+dis-play experiment # run a specific spike (e.g., power TV off/on; move DP1→DP2; reboot/driver-update) and diff
 ```
 
 `identity` output — the key diagnostic table:
@@ -242,7 +242,7 @@ Goal: fill this table for the two monitors + Sony TV and observe how it changes 
 ## 20. Development Phases (with gates)
 Prove the Windows core before any UI. Add the missing spikes.
 
-- **Phase 0 — CLI spike.** Build `display-manager` above; run experiments: PnP-path stability across reboot + driver update; identical-monitor distinguishability (incl. whether two units get distinct `connectorInstance`); EDID field availability (`edidManufactureId`/`edidProductCodeId` present? serial absent?); `SetDisplayConfig` exact "detach target for off" sequence + confirm path-priority ordering sets primary; powered-off-TV visibility (incl. re-registration after power-on); privilege requirements (console-session access per `ERROR_ACCESS_DENIED`). **Gate:** the identity mapping table is filled and every physical display distinguished by a stable key.
+- **Phase 0 — CLI spike.** Build `dis-play` above; run experiments: PnP-path stability across reboot + driver update; identical-monitor distinguishability (incl. whether two units get distinct `connectorInstance`); EDID field availability (`edidManufactureId`/`edidProductCodeId` present? serial absent?); `SetDisplayConfig` exact "detach target for off" sequence + confirm path-priority ordering sets primary; powered-off-TV visibility (incl. re-registration after power-on); privilege requirements (console-session access per `ERROR_ACCESS_DENIED`). **Gate:** the identity mapping table is filled and every physical display distinguished by a stable key.
 - **Phase 1 — Identity & resolver (pure Rust).** Implement `DisplayCandidate` + evidence resolution → UNIQUE/AMBIGUOUS/UNKNOWN; refuse unsafe matches. Dedicated tests: reorder, identical monitors, missing serial, connector change, ambiguous. **Gate:** enumeration changes do not change physical identity; ambiguous cases surface as AMBIGUOUS and are refused, not silently assigned.
 - **Phase 2 — Capture + persistence.** `capture_current()` → profile model (finalize schema from Phase 0 evidence) → JSON round-trip. **Gate:** captured config serializes and re-resolves equivalently against current hardware.
 - **Phase 3 — Apply (`apply_profile`).** Build path+mode, disabled = target not attached to active source (exact mechanism SPIKE), apply via `SetDisplayConfig`, then verify. Tests: Work→Gaming→Work; TV disconnected; monitor disconnected; TV powered off; display order changed; resolution manually changed. **Gate:** profiles reliably switch topology and verification reports the true outcome.

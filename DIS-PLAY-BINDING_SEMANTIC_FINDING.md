@@ -67,7 +67,7 @@ These decide whether the mechanism is expressible at all:
 3. **Role observability after swap:** what does path-priority / `connectorInstance` report about which slot is primary and where each unit sits, post-swap? → confirms CONNECTOR binding is observable and stable (and that primary follows the documented path-priority order).
 4. **Capture-time labeling:** with two identical units both present (one ON, one OFF), can we record "A = the unit on DP1" vs only "A = some abstract unit"? → confirms capture yields a *slot* label for identical units, never a physical-unit label.
 
-Gate: fill these into the existing `display-manager identity` table; the outcome sets which of `Auto/Physical/Connector` are actually reachable on this machine.
+Gate: fill these into the existing `dis-play identity` table; the outcome sets which of `Auto/Physical/Connector` are actually reachable on this machine.
 
 ## 5. Changes required to V2 before implementation (minimal)
 
