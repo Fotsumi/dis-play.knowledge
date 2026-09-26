@@ -13,7 +13,8 @@ A phase is complete only when its gate is satisfied with at least one OBSERVED o
 | 4 | Verification & Recovery | PHASE-4.md | Verify + recovery paths exercised on real HW | COMPLETE |
 | 5 | Tray Application | PHASE-5.md | Tray app runs; menu drives apply | COMPLETE |
 | 6 | Hotkeys | PHASE-6.md | Hotkeys registered + fired | COMPLETE |
-| 7 | Hardening | PHASE-7.md | Error handling, logging, packaging complete | BLOCKED by 6 |
+| 7 | Hardening | PHASE-7.md | Error handling, logging, packaging complete | COMPLETE |
+| 8 | Mode & Position Preservation | PHASE-8.md | Re-enabling a previously-disabled monitor restores its captured res/refresh/orientation/position; apply persists to the display database | IN PROGRESS (T8.1–T8.5, T8.7 impl complete; T8.8 HW validation pending) |
 
 ## Cross-phase invariants (apply to every phase)
 - Every factual claim carries an evidence label (DOCUMENTED / OBSERVED / INFERRED / UNKNOWN).
