@@ -95,16 +95,20 @@ before it gates a phase. This document does **not** assert facts as verified tha
 | T9.4 | **CI/CD** (GitHub Actions): build, test, `cargo clippy -- -D warnings`, build installer on `windows-latest` (Win10/11) | **DOCUMENTED** (GitHub Actions `windows-latest`); no live-display work in CI (core is pure Rust) | PROPOSED |
 | T9.5 | **README refresh**: all commands, install, troubleshooting, known deferrals (E3, E5), uninstall behavior | — | PROPOSED |
 | T9.6 | Installer polish: uninstall removes autostart Run key, start-menu shortcut, (optional) user config dir; add file size + version to release notes | — | PROPOSED |
+| T9.7 | **GUI-subsystem tray binary (Option B):** add a second `[[bin]] name = "dis-play-tray" subsystem = "windows"` with a small entry that calls `cmd::tray::run()` — the tray runs with **no console**, so (a) launching from Start-Menu / autostart shows no black window, and (b) closing the parent cmd window no longer kills the tray. Retain `dis-play tray` (console) for compatibility; the T7.2 single-instance guard already stops both from running at once. Point the Start-Menu shortcut (T9.6) and the autostart Run value (T7.3) at `dis-play-tray.exe`. | **DOCUMENTED** (Cargo `subsystem = "windows"`; a Windows GUI-subsystem process holds no console); target-HW behavior verified by the phase gate (OBSERVED) | PROPOSED |
 
 **Gate (complete only when all are OBSERVED/DOCUMENTED):**
 - [ ] Signed binary + installer verified by `signtool verify` / Windows SmartScreen (OBSERVED on clean Win11).
 - [ ] Clean-machine install → tray runs → one gated profile apply → uninstall removes autostart (OBSERVED).
 - [ ] CI pipeline green: build + test + clippy + installer on `windows-latest` (OBSERVED).
 - [ ] `--version` prints a real semver; CHANGELOG present (OBSERVED).
+- [ ] `dis-play-tray` launches with **no console window**; closing the parent cmd window (and Ctrl+C) does **not** terminate the tray — it remains in the system tray (OBSERVED on Win11).
+- [ ] Start-Menu shortcut and autostart launch `dis-play-tray.exe` with no console window; the CLI `dis-play` binary is unchanged (still a console binary with stdout) (OBSERVED).
 
 **Prereqs / notes:**
 - Code-signing requires the user to **procure a certificate** (personal code-sign cert, or a cloud signing service). This is the main external dependency — flag early.
-- Do **not** block release on CI if a machine is unavailable; T9.2 signing is the gating item, CI is parallel.
+- Do **not** block release on CI if a machine is unavailable; T9.2 signing is the gating item; CI is parallel.
+- T9.7 caveat: a GUI-subsystem process has **no console**, so `stdout`/`stderr` become no-ops. This is acceptable because the tray already surfaces user-facing messages via the tooltip + file logging (T7.1); any direct `eprintln!` is effectively silenced (do not rely on it).
 
 ---
 
@@ -262,6 +266,7 @@ Every new design decision from these phases gets a **Decision ID** (D-131+) reco
 - D-133: auto-recovery-on-startup default (off vs. on) and its verification gate.
 - D-134: recovery checkpoint history size / retention.
 - D-135: `diagnose` exit-code contract (0/1/2) and read-only guarantee.
+- D-136: Tray ships as a separate Windows **GUI-subsystem** binary (`dis-play-tray.exe`, no console — T9.7). Start-Menu + autostart launch it; `dis-play tray` (console) retained for compatibility; the T7.2 single-instance guard prevents both from running at once.
 
 ### 5.3 What is *not* on this roadmap (explicit)
 
