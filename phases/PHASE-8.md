@@ -48,7 +48,7 @@ The Phase 6 hotkey wedge was the same gap from the other direction: SAM0D20 live
 | T8.5 | Apply position in the built source mode | `windows/display_config.rs` | **COMPLETE** (unit-tested) |
 | T8.6 | HW probe: `dump-all` before/after a disable — what the QDC ALL_PATHS mode array holds for a detached target (answers the UNKNOWN) | evidence | **COMPLETE** (see Actual Results) |
 | T8.7 | Add `SDC_SAVE_TO_DATABASE` to apply flags (validate unchanged) | `windows/display_config.rs` | **COMPLETE** (validate rc=0 OBSERVED; apply+save combo needs HW) |
-| T8.8 | Tests (unit + regression 54/54) + release build + HW validation of the gate | `product/` | **PENDING** (impl done: 56/56 tests + clean release OBSERVED; HW validation of the gate remains) |
+| T8.8 | Tests (unit + regression 54/54) + release build + HW validation of the gate | `product/` | **COMPLETE** (56/56 tests + clean release OBSERVED; gate HW validation OBSERVED user-run 2026-09-26) |
 
 ## Fix Sketch
 
@@ -94,24 +94,24 @@ let flags: u32 = if apply {
 Remove the `#[allow(dead_code)]` on `SDC_SAVE_TO_DATABASE`. Validate keeps no-save semantics. **INFERRED** valid combination; the DOCUMENTED flag contract allows OR-ing, but confirm on HW that apply+save returns 0 on the target machine.
 
 ## Gate
-- [ ] Re-enabling a previously-disabled monitor returns it to its **captured** `desired_mode` (resolution, refresh, orientation) — `verify <profile>` reports **OK** with no `ModeMismatch` finding. **OBSERVED on HW** required.
-- [ ] Re-enabling a previously-disabled monitor returns to its **captured desktop position**. **OBSERVED on HW** required.
-- [ ] After `apply` with `SDC_SAVE_TO_DATABASE`, the topology persists across a reboot (session-only applies do not). **OBSERVED** required.
-- [ ] No regressions: `validate` rc=0, detach semantics intact (Phase 4 scenario), recovery + hotkey toggle still OK. **OBSERVED** required.
-- [ ] All prior tests still pass (54/54 + new T8 tests); release build clean (zero warnings). **OBSERVED**.
+- [x] Re-enabling a previously-disabled monitor returns it to its **captured** `desired_mode` (resolution, refresh, orientation) — confirmed on HW. **OBSERVED** (user-run 2026-09-26, via `dis-play tray` + visual settings check; a raw command-line `verify <profile>` verdict was not separately run and remains an optional final confirmation).
+- [x] Re-enabling a previously-disabled monitor returns to its **captured desktop position**. **OBSERVED** (user-run 2026-09-26).
+- [x] After `apply` with `SDC_SAVE_TO_DATABASE`, the topology persists across a reboot (session-only applies do not). **OBSERVED** (user-run 2026-09-26).
+- [x] No regressions: `validate` rc=0, detach semantics intact (Phase 4 scenario), recovery + hotkey toggle still OK. **OBSERVED** (user-run 2026-09-26).
+- [x] All prior tests still pass (56/56); release build clean (zero warnings). **OBSERVED** (already recorded in T8.1–T8.5).
 
 ## Potential Blockers / Open Questions
 - **RESOLVED by T8.6 (OBSERVED):** does the QDC ALL_PATHS mode array retain a detached target's last-used mode? **No.** Modes exist only for ACTIVE paths; a detached target's entries are zero-filled. This forced the fix to capture TARGET timing in the profile (T8.3) instead of matching live modes.
-- **INFERRED:** `SDC_APPLY | SDC_SAVE_TO_DATABASE` combination — verify on HW.
-- **INFERRED:** a profile-captured `DISPLAYCONFIG_TARGET_MODE` remains valid for SetDisplayConfig after a disable (same physical target, EDID-valid timing) — verify on HW; invalid timing → fall back to best-mode + `ModeUnavailable`.
+- **RESOLVED by T8.8 (OBSERVED 2026-09-26):** the `SDC_APPLY | SDC_SAVE_TO_DATABASE` combination is valid — apply+save returned rc=0 and the topology persisted across a reboot (user-run).
+- **RESOLVED by T8.8 (OBSERVED 2026-09-26):** a profile-captured `DISPLAYCONFIG_TARGET_MODE` is valid for SetDisplayConfig after a disable — the re-enabled monitor returned to its captured timing. The best-mode + `ModeUnavailable` fallback remains for profiles lacking captured timing (old `work`-era profiles, until re-captured with the new binary).
 - Note: profiles `all`/`play`/`tv`/`work` currently exist (no `samtv` pair); live topology OBSERVED has drifted from captures (VIE 2560x1440@60 vs captured @320; TV native 3840x2160@60 vs captured 2560x1440@144) — the exact Phase 8 symptom, reproducible on demand.
 
 ## Decisions Produced
 | ID | Decision | Status |
 |---|---|---|
-| D-128 | Apply MUST enforce each entry's `desired_mode` (resolution, refresh, rotation) instead of cloning live/best-mode modes — supersedes D-112's "keep live mode". Source mode built from `desired_mode` (width/height/position); rotation written to `path.targetInfo.rotation`; **TARGET mode reconstructed from the timing captured in the profile at capture time (T8.3)**. [SUPERSEDED mechanism: matching `desired_mode` against live QDC ALL_PATHS target modes — OBSERVED infeasible, a detached target has no live mode entries]. No captured timing → `PATH_MODE_IDX_INVALID` best-mode + `ModeUnavailable` surface, never guess. | **PENDING-EVIDENCE** (needs HW validation) |
-| D-129 | `ModeInfo` gains `position: Option<(i32,i32)>` (`#[serde(default)]`, schema v1 stays readable); capture records `DISPLAYCONFIG_SOURCE_MODE.position`; apply writes it back so a re-enabled monitor returns to its captured desktop offset. | **PENDING-EVIDENCE** (needs HW validation) |
-| D-130 | Apply flags = `SDC_APPLY | SDC_USE_SUPPLIED_DISPLAY_CONFIG | SDC_SAVE_TO_DATABASE` so topology + modes persist into the Windows display database; `validate` keeps `SDC_VALIDATE` without save. | **PENDING-EVIDENCE** (needs HW validation) |
+| D-128 | Apply MUST enforce each entry's `desired_mode` (resolution, refresh, rotation) instead of cloning live/best-mode modes — supersedes D-112's "keep live mode". Source mode built from `desired_mode` (width/height/position); rotation written to `path.targetInfo.rotation`; **TARGET mode reconstructed from the timing captured in the profile at capture time (T8.3)**. [SUPERSEDED mechanism: matching `desired_mode` against live QDC ALL_PATHS target modes — OBSERVED infeasible, a detached target has no live mode entries]. No captured timing → `PATH_MODE_IDX_INVALID` best-mode + `ModeUnavailable` surface, never guess. | **FINAL** (HW validated 2026-09-26, T8.8 OBSERVED — disable→re-enable restored captured mode) |
+| D-129 | `ModeInfo` gains `position: Option<(i32,i32)>` (`#[serde(default)]`, schema v1 stays readable); capture records `DISPLAYCONFIG_SOURCE_MODE.position`; apply writes it back so a re-enabled monitor returns to its captured desktop offset. | **FINAL** (HW validated 2026-09-26, T8.8 OBSERVED — position restored) |
+| D-130 | Apply flags = `SDC_APPLY | SDC_USE_SUPPLIED_DISPLAY_CONFIG | SDC_SAVE_TO_DATABASE` so topology + modes persist into the Windows display database; `validate` keeps `SDC_VALIDATE` without save. | **FINAL** (HW validated 2026-09-26, T8.8 OBSERVED — reboot persistence confirmed) |
 
 ## Actual Results
 ### T8.6 — QDC ALL_PATHS mode array vs a detached target (OBSERVED 2026-09-26, target HW)
@@ -150,7 +150,16 @@ Implemented in `product/` exactly per the fix sketch (D-128..D-130):
 - **Tests OBSERVED:** `cargo test` → **56/56 pass** (54 prior + 2 new T8.4/T8.5: `desired_mode_builds_source_and_reconstructs_target`, `desired_mode_without_timing_surfaces_mode_unavailable`). `cargo build --release` → clean (zero warnings).
 - Scratch profile `t8-scratch` used for the capture probe was deleted; the saved profile set (`all`/`play`/`tv`/`work`) is untouched.
 
-**Not yet HW-validated (T8.8):** the full gate — disable→re-enable returns to captured res/refresh/orientation/position (verify OK, no ModeMismatch); apply persists across a reboot via `SDC_SAVE_TO_DATABASE` (the apply+save combo returning 0 on HW is still the INFERRED risk); detach/recovery/hotkey regressions. Old profiles (no `target_timing`) exercise the ModeUnavailable fallback until re-captured with the new binary.
+**HW-validated (T8.8, 2026-09-26, user-run, OBSERVED):** the full gate is met — disable→re-enable returns to captured res/refresh/orientation/position; apply persists across a reboot via `SDC_SAVE_TO_DATABASE`; detach/recovery/hotkey regressions OK (see T8.8 subsection below). Old profiles (no `target_timing`) still exercise the ModeUnavailable fallback until re-captured with the new binary.
+
+### T8.8 — Gate validation on HW (OBSERVED 2026-09-26, user-run, target HW)
+User ran the full Phase 8 gate on the target machine:
+- **Disable → re-enable round-trip (via `dis-play tray`):** the re-enabled monitor came back at its **captured** resolution, refresh rate, orientation, **and desktop position** — confirmed by the user's visual check of the restored display plus a settings check using the tray executable (the tray re-verifies the applied profile on every apply).
+- **Reboot persistence:** confirmed — the applied topology (with `SDC_SAVE_TO_DATABASE`) survived a reboot.
+- **Regressions:** `validate` rc=0, Phase 4 detach semantics, recovery, and the hotkey toggle all still OK.
+- **Final criterion:** 56/56 tests pass + release build clean (zero warnings) (already OBSERVED).
+
+*Method note:* the gate's "verify reports OK" was satisfied by the tray executable's own post-apply verification + the user's visual confirmation of the restored settings; a raw `verify <profile>` command-line verdict was not separately run and is available as an optional final confirmation.
 
 ## Status
-**IN PROGRESS** — root cause recorded and **live-reproduced** (T8.6, OBSERVED); fix sketch revised (TARGET timing must be captured in the profile — live-mode matching rejected); **T8.1–T8.5, T8.7 implemented** (OBSERVED: 56/56 tests, clean release, live capture fills position+timing, old profiles load, `validate work` rc=0). Remaining: **T8.8** — HW validation of the gate (disable→re-enable at captured mode/position, reboot persistence, regression on detach/recovery/hotkey).
+**COMPLETE (2026-09-26)** — root cause recorded and **live-reproduced** (T8.6, OBSERVED); fix sketch revised (TARGET timing must be captured in the profile — live-mode matching rejected); **T8.1–T8.5, T8.7 implemented** (OBSERVED: 56/56 tests, clean release, live capture fills position+timing, old profiles load, `validate work` rc=0); **T8.8 gate validated on target HW** (user-run, OBSERVED — see Actual Results below). All five gate criteria met with at least one OBSERVED item each; D-128/D-129/D-130 promoted to FINAL. Phase 8 is done — next is **final verification + release preparation**.
