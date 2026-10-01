@@ -28,8 +28,10 @@ Key findings:
 - **Hotkey cycle wedge found (2026-09-26, OBSERVED):** the initial lkg-based cycle re-applied `work-notv` on EVERY press because lkg never advanced (verification PARTIAL: VIE2701 physically absent + SAM live rot=0 vs profile rot=270). REJECTED in favor of D-122 toggle.
 - **Recovery of degraded topology OBSERVED (2026-09-26, target HW, user-approved):** only SAM active after the wedge episode (VIE+TCL inactive). `validate samtv` → rc=0; gated `apply samtv` → rc=0, TV re-attached on source 1, Verification OK, lkg = `samtv`.
 - `phases/PHASE-6.md` rewritten (results, decisions D-122/D-123, gate COMPLETE); `phases/INDEX.md` Phase 6 → COMPLETE (unblocked Phase 7); `product/README.md` hotkey + taskbar-icon sections added; `STATUS.md` advanced.
+- **ROADMAP.md created (2026-09-26):** post-Phase 8 plan covering **Phases 9–14** — (9) Release v1.0 (signing/CI/docs), (10) UX (tray profile mgmt, toasts, per-profile hotkeys, settings), (11) Robustness (sleep/wake, hotplug, deeper recovery), (12) Diagnostics/CLI polish, (13) Quality automation (CI matrix, property/fuzz), (14) Extensibility (opt-in). Includes gap-analysis table, per-feature evidence labels, per-phase gates, cross-cutting risks, and default sequencing. All features are **PROPOSED** (not implemented); no new Windows-API behavior is asserted as OBSERVED/DOCUMENTED beyond what the project already cites — unvalidated API integrations (toast/WinRT, multi-hotkey, power broadcast, WM_DEVICECHANGE, code-signing) are flagged **DOCUMENTED-but-needs-spike** / **SPIKE**.
 
 ## Current Work
+
 **Final verification + release preparation.** All nine phases (0–8) gates are COMPLETE (T8.8 gate HW-validated, OBSERVED 2026-09-26). Remaining: (a) run the full test suite on target HW to confirm 56/56 pass; (b) update README with installation instructions and verify all documentation is current; (c) build the installer (`product\build-installer.bat` → `product\dis-play-setup.exe`); (d) user testing: install → run → uninstall cycle on a clean Windows machine.
 
 ## Next Action
@@ -40,6 +42,7 @@ Key findings:
 5. **User testing** — Test install → run → uninstall cycle on a clean Windows machine.
 6. E3 (driver update) still DEFERRED to a later date.
 7. Note: VIE2701 is physically absent (in for repair) — `work`/`work-notv` (VIE-based) profiles resolve with an unknown/skipped VIE entry until the monitor returns.
+8. **ROADMAP guidance:** the post-Phase 8 work is now defined in `ROADMAP.md` — default sequencing is Phase 9 (Release v1.0) → 10 (UX) → 11 (Robustness) → 12 (Diagnostics) → 13 (Quality automation) → 14 (Extensibility, deferred). Phase 13 (CI/property-fuzz, hardware-free) can run in parallel with Phase 9.
 
 ## Phase Gates
 | Phase | Gate | Status |
@@ -205,6 +208,7 @@ Key findings:
 - **This session (2026-09-26, Phase 8 T8.6):** `phases/PHASE-8.md` Actual Results filled with the probe evidence (OBSERVED) — QDC ALL_PATHS mode array holds no modes for a detached target; the root-cause symptom was live-reproduced (TV re-enabled at best-mode 3840x2160@60 vs captured 2560x1440@144). Fix sketch revised: TARGET timing must be captured in the profile (new T8.3); live-mode matching superseded in D-128. `STATUS.md` UNKNOWN→RESOLVED, D-128 updated, discovery + next-action probe marked done.
 - **This session (2026-09-26, Phase 8 T8.1–T8.5/T8.7):** `phases/PHASE-8.md` task table → COMPLETE for T8.1–T8.5/T8.7 + Actual Results filled with the implementation evidence (OBSERVED: backward-compat load of old profiles, live capture fills position+timing, `validate work` rc=0, 56/56 tests, clean release); Status → implementation done / T8.8 (HW validation) remaining. `phases/INDEX.md` Phase 8 row updated. `STATUS.md` advanced (Current Phase/Work, Next Action items 1–3 DONE, D-128..D-130 annotated "implemented", Product Implementation Status Phase 8 additions, blocker updated).
 - **This session (2026-09-26, Phase 8 T8.8 gate validation):** `phases/PHASE-8.md` — T8.8 marked COMPLETE, all five gate boxes checked, Status → COMPLETE, new T8.8 actual-results section added, the two INFERRED blockers (reboot persistence, captured TARGET-mode validity) resolved to OBSERVED. `phases/INDEX.md` — Phase 8 row → COMPLETE. `STATUS.md` — Current Phase / Overall Status / Last Completed Work / Current Work / Next Action advanced to "final verification + release preparation"; Phase 8 gate row → COMPLETE; D-128/D-129/D-130 → FINAL; "Decisions Pending Evidence" → none; disabled-monitor blocker → RESOLVED; new T8.8 discovery added. V1 files untouched (immutable).
+- **This session (2026-09-26):** `ROADMAP.md` created (root of the knowledge repo) — the post-Phase 8 plan. New phase docs `phases/PHASE-9..PHASE-14.md` will be created as each roadmap phase starts (not yet); decision IDs **D-131–D-135** are *recommended to reserve* for the roadmap's open design points (toast channel, hotkey model, auto-recovery default, recovery-checkpoint retention, `diagnose` exit contract) — **not yet decisions**.
 
 ## Product Implementation Status
 CLI source **compiles clean + builds release** in `product/`. Read-only commands execute on this host (**OBSERVED**). `product/.gitignore` already ignores `target/`, `debug/`.
