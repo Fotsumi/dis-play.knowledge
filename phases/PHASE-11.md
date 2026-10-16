@@ -59,7 +59,7 @@ Complete only when all of the following are satisfied with at least one OBSERVED
 
 | ID | Decision | Status |
 |---|---|---|
-| D-133 | Auto-recovery-on-startup default (off vs. on) and its verification gate | **PENDING** (reserved 2026-09-26, not yet decided; T11.3) |
+| D-141 | Auto-recovery-on-startup default (off vs. on) and its verification gate | **PENDING** (reserved 2026-09-26 as "D-133"; **renumbered to D-141 2026-10-16** because D-133 was reassigned to Phase 10 T10.3. Not yet decided; T11.3) |
 | D-134 | Recovery checkpoint history size / retention | **PENDING** (reserved 2026-09-26, not yet decided; T11.4) |
 
 ## Actual Results
@@ -68,4 +68,4 @@ None — no tasks executed yet. Per user instruction (2026-09-26), documentation
 
 ## Status
 
-**PLANNED (not started, 2026-09-26)** — tasks T11.1–T11.5 detailed from `ROADMAP.md` §4. D-133/D-134 reserved but undecided. No code executed.
+**READY (unblocked 2026-10-16)** — tasks T11.1–T11.5 detailed from `ROADMAP.md` §4. Unblocked by Phase 10 completion (2026-10-16, gate verified on target HW). D-134 and D-141 reserved but undecided. No code executed yet; next executable phase when work resumes.

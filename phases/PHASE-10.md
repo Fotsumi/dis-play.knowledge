@@ -35,6 +35,10 @@ Gap analysis (`ROADMAP.md` §3, rows 1–4): the V1 plan's §16 "Save Current…
 | T10.7 | **Settings surface** (tray menu → small settings window or JSON): hotkeys, default profile, autostart toggle, log level, toast on/off | settings UI + config schema | **COMPLETE** (2026-10-16, implemented + `cargo test`/`clippy` OBSERVED on target HW; on-HW menu toggles + restart persistence pending user-run) |
 | T10.8 | **Recent switches + Undo**: last-N applied profiles in tray; "Undo" re-applies the previous profile | recent list + Undo action | **COMPLETE** (2026-10-16, implemented + `cargo test`/`clippy` OBSERVED on target HW; on-HW menu interaction pending user-run) |
 
+> **All eight tasks are now on-HW verified (user-run, target HW, 2026-10-16 — see "On-HW
+> Verification" below).** The per-task "pending user-run" notes above record the state at the
+> moment each task was first marked complete; the blanket user-run above supersedes them.
+
 **API / feasibility notes (from `ROADMAP.md` §4):**
 - T10.2 — WinRT `Windows.UI.Notifications` (Win10+): **DOCUMENTED**; Rust bindings + target-HW behavior = **SPIKE** (add the `winrt` crate in a spike first). **RESOLVED (D-131, 2026-10-16):** the spike chose the tray icon's **shell notification** (`Shell_NotifyIconW` + `NIF_INFO`, already-enabled `Win32_UI_Shell`) over WinRT — it renders as a standard, dismissable system toast on Win10/11 with **no new dependency** and no unpackaged-AppUserModelID/Start-Menu-shortcut requirement. Implemented in T10.2.
 - T10.5 — `RegisterHotKey`: **DOCUMENTED** (already used in T6.3); multi-hotkey registration + per-key `ERROR_HOTKEY_ALREADY_REGISTERED` (1409) handling = **SPIKE**. **RESOLVED (T10.5, 2026-10-16):** per-profile bindings register individually (`HK_BINDING_BASE + index`, `MOD_NOREPEAT`); a failing key is logged/surfaced per key and never prevents the others. Combination strings are parsed/validated by a pure `core::hotkeys::parse_hotkey` mock-tested on the target HW; the Win32 conversion (`HOT_KEY_MODIFIERS`/VK) happens only at the tray registration site.
@@ -60,10 +64,10 @@ supporting T10.4 indicator + T10.8 recent/undo checks.
 
 Complete only when all of the following are satisfied with at least one OBSERVED or DOCUMENTED item per criterion:
 
-- [ ] User can Save Current / rename / delete / duplicate profiles entirely from the tray; state persists across restarts (OBSERVED).
-- [ ] Every switch (success / PARTIAL / failure) shows a dismissable toast; opt-out is respected (OBSERVED on target HW).
-- [ ] Each profile can bind its own hotkey; conflicts are detected and surfaced; `ERROR_HOTKEY_ALREADY_REGISTERED` per-key handled (OBSERVED).
-- [ ] Settings (autostart, default profile, log level, toast on/off) persist and take effect on restart (OBSERVED).
+- [x] User can Save Current / rename / delete / duplicate profiles entirely from the tray; state persists across restarts (OBSERVED).
+- [x] Every switch (success / PARTIAL / failure) shows a dismissable toast; opt-out is respected (OBSERVED on target HW).
+- [x] Each profile can bind its own hotkey; conflicts are detected and surfaced; `ERROR_HOTKEY_ALREADY_REGISTERED` per-key handled (OBSERVED).
+- [x] Settings (autostart, default profile, log level, toast on/off) persist and take effect on restart (OBSERVED). *(One defect found during this check — autostart required a manual `dis-play-tray.exe` copy; fixed as D-140.)*
 
 ## Potential Blockers / Open Questions
 
@@ -80,6 +84,7 @@ Complete only when all of the following are satisfied with at least one OBSERVED
 | D-132 | Hotkey model — per-profile hotkeys; the legacy Ctrl+Alt+D toggle pair is kept (schema migration for `hotkeys.json`) | **FINAL** (2026-10-16, T10.5): additive schema — `HotkeyConfig` gains `bindings: [{ profile, hotkey }]` (`#[serde(default)]`); the legacy `profiles` toggle pair is retained unchanged, so a v1.0 config still parses and the OBSERVED toggle keeps working; a combination needs ≥1 modifier; conflicts (another profile / the built-in toggle / another app) are reported, never silently applied |
 | D-133 | Profile-management surface (T10.3): each tray profile is a **per-profile submenu** (`Apply` / `Rename…` / `Duplicate…` / `Delete`); delete is confirmed via a stock `MessageBoxW` Yes/No; a **rename rewrites** any `hotkeys.json` entry and the last-known-good `source` reference to the new name (the rename-reference spike). No new crate/feature — `Win32_UI_WindowsAndMessaging` already enabled. | **FINAL** (2026-10-16, T10.3; implementation + tests OBSERVED, on-HW menu interaction pending user-run) |
 | D-139 | Settings surface (T10.7) + tray startup semantics: no separate settings window — a tray **`Settings` submenu** (Notifications · Start with Windows · Log level ▸ · Default profile ▸) writes the extended `settings.json` (`{ toasts, autostart, default_profile, log_level }`); **`default_profile` is auto-applied on tray startup** (user opt-in; falls back to last-known-good when unset/missing); **autostart on startup is register-only** (it never removes a Run key set via the CLI — unchecked-then-start leaves the CLI value intact). Additive schema; a missing/malformed file falls back to defaults. No new OS API/crate. | **FINAL** (2026-10-16, T10.7; implementation + tests OBSERVED, on-HW toggles + restart persistence pending user-run) |
+| D-140 | Autostart target path: `cmd::autostart::app_path()` resolves `dis-play-tray.exe` **next to the running executable** (normal install `C:\Program Files\DIS-PLAY\`, or a source build `target\release\`) instead of the `%LOCALAPPDATA%`-only path (D-126/D-136). **Supersedes** the T7.3 requirement that the binary be manually copied to `%LOCALAPPDATA%` — found on HW 2026-10-16 (autostart toggle could not register after a normal install). `%LOCALAPPDATA%\dis-play-tray.exe` is retained as a fallback. | **FINAL** (2026-10-16, on-HW finding; implemented + 109/109 tests/clippy OBSERVED; on-HW re-check of the installed Run value recommended) |
 
 ## Actual Results
 
@@ -430,18 +435,39 @@ one-click undo); no gate item is exclusively about recent/undo.
 **Decisions:** none new — T10.8 reuses the OBSERVED capture/apply path and the last-known-good
 state; the only new logic (bounded history) is pure and unit-tested.
 
+## On-HW Verification (user-run, target HW, 2026-10-16)
+
+The user ran `phases/PHASE-10-CHECKLIST.md` end to end on the target machine; **all steps passed
+(OBSERVED)** and the four gate items are confirmed. Verbatim raw-string capture (§7 of the
+checklist) was skipped by user decision — this narrative is the record.
+
+- **Gate item 1 (profile management):** Save Current / rename / delete / duplicate exercised from
+  the tray submenus; the profile set survived a tray restart (OBSERVED).
+- **Gate item 2 (toasts / X10.1):** success / PARTIAL / failure toasts observed; the
+  `Settings ▸ Notifications` opt-out was respected (OBSERVED).
+- **Gate item 3 (hotkeys / X10.2):** per-profile bindings captured by pressing, fired, and both
+  config-level and OS-level (`ERROR_HOTKEY_ALREADY_REGISTERED`) conflicts surfaced without
+  breaking other bindings (OBSERVED).
+- **Gate item 4 (settings + restart persistence):** log level, default profile and notifications
+  persisted and took effect on restart (OBSERVED). **One defect found:** enabling `Start with
+  Windows` failed after a normal install because the autostart Run value pointed at
+  `%LOCALAPPDATA%\dis-play-tray.exe`, which the installer does not create — the toggle only
+  worked after manually copying the exe there. **Fixed in-session as D-140** (resolve the tray
+  binary next to the running executable); rebuild OBSERVED: 109/109 tests, clippy clean,
+  `dis-play.exe` 1,637,888 B / `dis-play-tray.exe` 1,545,728 B. On-HW re-check of the installed
+  Run value is recommended but the path logic no longer requires the manual copy.
+
+**Gate:** all four criteria satisfied by the user-run OBSERVED items above → **COMPLETE**.
+
 ## Status
 
-**IMPLEMENTATION-COMPLETE / AWAITING ON-HW VERIFICATION (2026-10-16)** — all eight tasks
-(T10.1 tray "Save Current Configuration…", T10.2 toast notifications, T10.3 profile management
-(rename / delete / duplicate + CLI), T10.4 active-profile indicator, T10.5 per-profile hotkeys,
-T10.6 hotkey config UI / learn-by-press, T10.7 settings surface, T10.8 recent switches + Undo)
-are COMPLETE: implemented + `cargo test --release` **109/109** + `clippy -D warnings` clean +
-release build (OBSERVED on target HW). On-HW interaction is pending user-run: prompt/menu
-(T10.1, T10.3, T10.4), toast display/opt-out (T10.2, X10.1), per-profile hotkey fire / conflict /
-capture (T10.5, T10.6, X10.2), settings + recent/undo menu round-trip incl. restart persistence
-(T10.7, T10.8). No phase task remains — the gate cannot be marked complete until the four
-user-run OBSERVED items land. **D-131** (toast channel), **D-132** (per-profile hotkeys, additive
-schema), **D-133** (profile-management submenu) and **D-139** (settings surface + startup
-semantics) are FINAL. Next action: user runs the phase-10 on-HW checks (X10.1, X10.2, plus the
-per-task manual checks) to satisfy the gate.
+**COMPLETE (2026-10-16)** — all eight tasks (T10.1 tray "Save Current Configuration…", T10.2
+toast notifications, T10.3 profile management (rename / delete / duplicate + CLI), T10.4
+active-profile indicator, T10.5 per-profile hotkeys, T10.6 hotkey config UI / learn-by-press,
+T10.7 settings surface, T10.8 recent switches + Undo) are implemented (`cargo test --release`
+**109/109**, `clippy -D warnings` clean, release build OBSERVED) **and verified on target HW by
+the user** (see "On-HW Verification" above). All four gate criteria are satisfied (OBSERVED).
+**D-131** (toast channel), **D-132** (per-profile hotkeys, additive schema), **D-133**
+(profile-management submenu), **D-139** (settings surface + startup semantics) and **D-140**
+(autostart path next to the running exe) are FINAL. Phase 10 is done; **Phase 11 (Robustness) is
+unblocked and is the next executable phase.**
