@@ -29,7 +29,7 @@ Gap analysis (`ROADMAP.md` §3, rows 1–4): the V1 plan's §16 "Save Current…
 | T10.1 | Tray **Save Current Configuration…** (prompted name, capture live topology via the existing `profile capture` path) | tray menu action + saved profile | **COMPLETE** (2026-10-16, implemented + `cargo test`/`clippy` OBSERVED on target HW; on-HW prompt interaction pending user-run) |
 | T10.2 | **Toast notifications** for success / PARTIAL / failure (dismissable, non-intrusive; opt-out in config) | toast on every switch | **COMPLETE** (2026-10-16, implemented + `cargo test`/`clippy` OBSERVED on target HW; on-HW toast display via X10.1 pending user-run) |
 | T10.3 | **Profile management in tray** (rename, delete, duplicate) + CLI (`profile rename`/`delete`/`dup`) | management menu actions + CLI subcommands | **COMPLETE** (2026-10-16, implemented + `cargo test`/`clippy` OBSERVED on target HW; on-HW menu/prompt interaction pending user-run) |
-| T10.4 | **Active-profile indicator** in tray menu + tooltip (which profile is currently applied / last-known-good) | tray UI | **PLANNED** |
+| T10.4 | **Active-profile indicator** in tray menu + tooltip (which profile is currently applied / last-known-good) | tray UI | **COMPLETE** (2026-10-16, implemented + `cargo test`/`clippy` OBSERVED on target HW; on-HW menu/tooltip display pending user-run) |
 | T10.5 | **Per-profile hotkeys** (`Ctrl+Alt+W`, `Ctrl+Alt+G`, …) — configurable per profile, replacing/extending the two-profile toggle | per-profile hotkey config + registration | **PLANNED** |
 | T10.6 | **Hotkey config UI / "learn by press"**: capture key combos into config; detect & report conflicts | learn-by-press UI + conflict reporting | **PLANNED** |
 | T10.7 | **Settings surface** (tray menu → small settings window or JSON): hotkeys, default profile, autostart toggle, log level, toast on/off | settings UI + config schema | **PLANNED** |
@@ -217,16 +217,54 @@ user-run.
 **Decisions:** **D-133** decided (FINAL) — per-profile submenu + rename rewrites hotkey/lkg
 references. D-132 remains PENDING (T10.5).
 
-Other tasks: **T10.4–T10.8 not executed.**
+### T10.4 — Active-profile indicator (COMPLETE, 2026-10-16)
+
+**Implemented (product):**
+
+- **Definition of "active" = the existing last-known-good record** (`LastKnownGood.source`,
+  `%LOCALAPPDATA%\dis-play\state\last-known-good.json`) — **no new state** and no new
+  dependency (the T10.4 feasibility note: "reads existing lkg + apply state").
+- **`product/src/cmd/tray.rs`:**
+  - `active_profile() -> Option<String>` — best-effort read-only read of lkg `source`.
+  - pure `active_label(active: Option<&str>) -> String` → `active: '<name>'` / `active: (none)`;
+    pure `is_active(active, name) -> bool` (exact match). Both unit-tested.
+  - `status_line()` (top disabled menu line) now leads with the active profile:
+    `active: '<name>' — verification <status>` (or `live query failed` /
+    `active: (none) — apply a profile to set one` / `active: ? — app data dirs unavailable`).
+  - tooltip setter split: new `set_tooltip()` (NIM_MODIFY, no stdout) + `set_status()` =
+    `set_tooltip()` + `println!`. `show_menu` now calls `set_tooltip(hwnd, &status)` on every
+    open, so the tooltip always names the active profile without console spam.
+  - **Menu indicator:** the active profile's top-level submenu and its `Apply` child carry
+    `MF_CHECKED` (visible closed and open); other profiles unchanged. `action_for` id mapping
+    and the T10.3 submenu structure are untouched.
+- **`product/README.md`:** Tray app section documents the checkmark + `active: '<name>'` in the
+  menu/tooltip. **`product/CHANGELOG.md`:** Unreleased entry added.
+
+**Evidence (target HW, 2026-10-16):**
+- `cargo test --release` → **85/85 pass** (was 83; +2: `is_active_matches_exact_name_only`,
+  `active_label_names_profile_or_none`) (**OBSERVED**).
+- `cargo clippy --all-targets --all-features -- -D warnings` → clean; `cargo build --release` →
+  clean (**OBSERVED**); `dis-play.exe` 1,565,696 B; `dis-play-tray.exe` 1,464,320 B (**OBSERVED**).
+- **Pending user-run (not yet OBSERVED):** opening the tray menu and visually confirming the
+  checkmark on the active profile's submenu and the `active: '<name>'` text in the menu status
+  line / tooltip.
+
+**Gate impact:** supports Phase-10 gate items 1–2 (the tray is now a full manager with visible
+state); no gate item is exclusively about the indicator.
+
+**Decisions:** **none new** — T10.4 consumes the OBSERVED last-known-good state and introduces no
+new behavior choice. D-132 remains PENDING (T10.5).
+
+Other tasks: **T10.5–T10.8 not executed.**
 
 ## Status
 
 **IN PROGRESS (2026-10-16)** — T10.1 (tray "Save Current Configuration…"), T10.2 (toast
-notifications) and T10.3 (profile management: rename / delete / duplicate + CLI) COMPLETE:
-implemented + `cargo test --release` **83/83** + `clippy -D warnings` clean + release build
-(OBSERVED on target HW); on-HW prompt/menu interaction (T10.1, T10.3) and toast display/opt-out
-(T10.2, X10.1) pending user-run. Tasks T10.4–T10.8 remain PLANNED. **D-131** (toast channel) and
-**D-133** (profile-management submenu) are FINAL; **D-132** (per-profile hotkeys) remains
-reserved/undecided. Recommended sequence (`ROADMAP.md` §4): T10.1 → T10.5 → T10.2 → T10.6 →
-T10.7; next executable task is **T10.5** (per-profile hotkeys) or **T10.4** (active-profile
-indicator).
+notifications), T10.3 (profile management: rename / delete / duplicate + CLI) and T10.4
+(active-profile indicator) COMPLETE: implemented + `cargo test --release` **85/85** +
+`clippy -D warnings` clean + release build (OBSERVED on target HW); on-HW prompt/menu
+interaction (T10.1, T10.3, T10.4) and toast display/opt-out (T10.2, X10.1) pending user-run.
+Tasks T10.5–T10.8 remain PLANNED. **D-131** (toast channel) and **D-133** (profile-management
+submenu) are FINAL; **D-132** (per-profile hotkeys) remains reserved/undecided. Recommended
+sequence (`ROADMAP.md` §4): T10.1 → T10.5 → T10.2 → T10.6 → T10.7; next executable task is
+**T10.5** (per-profile hotkeys) or **T10.6** (hotkey config UI).
