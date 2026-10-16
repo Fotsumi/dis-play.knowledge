@@ -28,7 +28,7 @@ Gap analysis (`ROADMAP.md` §3, rows 1–4): the V1 plan's §16 "Save Current…
 |---|---|---|---|
 | T10.1 | Tray **Save Current Configuration…** (prompted name, capture live topology via the existing `profile capture` path) | tray menu action + saved profile | **COMPLETE** (2026-10-16, implemented + `cargo test`/`clippy` OBSERVED on target HW; on-HW prompt interaction pending user-run) |
 | T10.2 | **Toast notifications** for success / PARTIAL / failure (dismissable, non-intrusive; opt-out in config) | toast on every switch | **COMPLETE** (2026-10-16, implemented + `cargo test`/`clippy` OBSERVED on target HW; on-HW toast display via X10.1 pending user-run) |
-| T10.3 | **Profile management in tray** (rename, delete, duplicate) + CLI (`profile rename`/`delete`/`dup`) | management menu actions + CLI subcommands | **PLANNED** |
+| T10.3 | **Profile management in tray** (rename, delete, duplicate) + CLI (`profile rename`/`delete`/`dup`) | management menu actions + CLI subcommands | **COMPLETE** (2026-10-16, implemented + `cargo test`/`clippy` OBSERVED on target HW; on-HW menu/prompt interaction pending user-run) |
 | T10.4 | **Active-profile indicator** in tray menu + tooltip (which profile is currently applied / last-known-good) | tray UI | **PLANNED** |
 | T10.5 | **Per-profile hotkeys** (`Ctrl+Alt+W`, `Ctrl+Alt+G`, …) — configurable per profile, replacing/extending the two-profile toggle | per-profile hotkey config + registration | **PLANNED** |
 | T10.6 | **Hotkey config UI / "learn by press"**: capture key combos into config; detect & report conflicts | learn-by-press UI + conflict reporting | **PLANNED** |
@@ -70,6 +70,7 @@ Complete only when all of the following are satisfied with at least one OBSERVED
 |---|---|---|
 | D-131 | Toast notification channel (WinRT vs. tray-only) + opt-out default | **FINAL** (2026-10-16, T10.2): channel = tray icon **shell notification** (`Shell_NotifyIconW` + `NIF_INFO`, no new dependency); opt-out default = **toasts ON** (`settings.json` `{ "toasts": false }` to silence) |
 | D-132 | Hotkey model — replace the two-profile toggle with per-profile hotkeys (schema migration for `hotkeys.json`) | **PENDING** (reserved 2026-09-26, not yet decided; T10.5) |
+| D-133 | Profile-management surface (T10.3): each tray profile is a **per-profile submenu** (`Apply` / `Rename…` / `Duplicate…` / `Delete`); delete is confirmed via a stock `MessageBoxW` Yes/No; a **rename rewrites** any `hotkeys.json` entry and the last-known-good `source` reference to the new name (the rename-reference spike). No new crate/feature — `Win32_UI_WindowsAndMessaging` already enabled. | **FINAL** (2026-10-16, T10.3; implementation + tests OBSERVED, on-HW menu interaction pending user-run) |
 
 ## Actual Results
 
@@ -165,14 +166,67 @@ toast display + opt-out is X10.1 (user-run).
 **Decisions:** **D-131** decided (FINAL) — shell-notification channel, toasts ON by default
 opt-out. D-132 remains PENDING (T10.5).
 
-Other tasks: **none executed.**
+### T10.3 — Profile management: rename / delete / duplicate (COMPLETE, 2026-10-16)
+
+**Implemented (product):**
+
+- **CLI:** `dis-play profile delete <name>`, `dis-play profile rename <old> <new>`,
+  `dis-play profile dup <src> <dst>`. `src/main.rs`'s `profile` dispatch was restructured into a
+  single `match args[1]` with `list`/`capture`/`show`/`delete`/`rename`/`dup` arms; the `usage:`
+  fallback string lists the new subcommands.
+- **`product/src/core/persistence.rs`:** three new file ops on the existing
+  `%LOCALAPPDATA%\dis-play\profiles` dir — `persist_rename` (load old → set `name` → save new →
+  remove old), `persist_duplicate` (copy with a new `name`, source untouched), `persist_delete`.
+  Guards: empty / self (same sanitized stem) → `Error::Usage`; existing target →
+  `Error::Io(AlreadyExists)`; missing delete target → `Error::Io(NotFound)` (never a silent no-op).
+- **`product/src/cmd/profile.rs`:** composite `rename_profile` / `duplicate_profile` /
+  `delete_profile` (used by both the CLI wrappers and the tray). The **rename-reference spike**
+  (D-133) is resolved here: after the file move, any `hotkeys.json` entry equal to the old name is
+  rewritten (via the new `core::hotkeys::save_hotkey_config` + pure `rename_in_config`), and the
+  last-known-good `source` label is updated when it matched (best-effort; a self-contained lkg copy
+  still recovers regardless).
+- **`product/src/windows/prompt.rs`:** new `confirm_box` — a stock `MessageBoxW`
+  (`MB_YESNO | MB_ICONQUESTION`, Yes-only) used to confirm a delete. Already-enabled
+  `Win32_UI_WindowsAndMessaging` feature; **no new OS API/crate/dependency**.
+- **`product/src/cmd/tray.rs`:** each saved profile is now a **per-profile submenu**
+  `Apply` / `Rename…` / `Duplicate…` / `Delete` (D-133). New id ranges
+  `ID_BASE_RENAME=0x1000`, `ID_BASE_DUP=0x2000`, `ID_BASE_DELETE=0x3000`; `MenuAction` gained
+  `RenameProfile` / `DuplicateProfile` / `DeleteProfile`; `action_for` maps every range
+  (`base .. base + count`). Rename/Duplicate reuse `prompt::input_box` (prefilled with the current
+  name / `<name>-copy`); Delete uses `confirm_box`. Submenus are attached with `MF_POPUP` so
+  `DestroyMenu(parent)` frees them (no double-free).
+- **`product/README.md`:** Tray app menu description updated; CLI table gained the three
+  profile-management rows. **`product/CHANGELOG.md`:** Unreleased entry added.
+
+**Evidence (target HW, 2026-10-16):**
+- `cargo test --release` → **83/83 pass** (was 72; +11: `persistence` rename/dup/delete
+  round-trips + guards, `hotkeys::save_hotkey_config`/`rename_in_config`, tray `action_for`
+  management id ranges) (**OBSERVED**).
+- `cargo clippy --all-targets --all-features -- -D warnings` → clean; `cargo build --release` →
+  clean (**OBSERVED**); `dis-play.exe` 1,561,600 B; `dis-play-tray.exe` 1,461,248 B (**OBSERVED**).
+- **Pending user-run (not yet OBSERVED):** opening the tray and exercising the per-profile
+  submenu — Rename…/Duplicate…/Delete via the prompt + confirm dialog — and confirming the
+  profile files under `%LOCALAPPDATA%\dis-play\profiles` (and any `hotkeys.json` reference)
+  update accordingly and survive a tray restart.
+
+**Gate impact:** Phase-10 gate item 1 ("Save Current / rename / delete / duplicate profiles
+entirely from the tray; state persists across restarts") is now **implementation-complete** by
+T10.1 (Save Current) + T10.3 (rename/delete/duplicate); the on-HW tray interaction is pending
+user-run.
+
+**Decisions:** **D-133** decided (FINAL) — per-profile submenu + rename rewrites hotkey/lkg
+references. D-132 remains PENDING (T10.5).
+
+Other tasks: **T10.4–T10.8 not executed.**
 
 ## Status
 
-**IN PROGRESS (2026-10-16)** — T10.1 (tray "Save Current Configuration…") and T10.2 (toast
-notifications) COMPLETE: implemented + `cargo test --release` 72/72 + `clippy -D warnings`
-clean + release build (OBSERVED on target HW); on-HW prompt interaction (T10.1) and toast
-display/opt-out (T10.2, X10.1) pending user-run. Tasks T10.3–T10.8 remain PLANNED. **D-131**
-(toast channel) is FINAL; **D-132** (per-profile hotkeys) remains reserved/undecided.
-Recommended sequence (`ROADMAP.md` §4): T10.1 → T10.5 → T10.2 → T10.6 → T10.7; next executable
-task is **T10.5** (per-profile hotkeys) or T10.3 (profile management).
+**IN PROGRESS (2026-10-16)** — T10.1 (tray "Save Current Configuration…"), T10.2 (toast
+notifications) and T10.3 (profile management: rename / delete / duplicate + CLI) COMPLETE:
+implemented + `cargo test --release` **83/83** + `clippy -D warnings` clean + release build
+(OBSERVED on target HW); on-HW prompt/menu interaction (T10.1, T10.3) and toast display/opt-out
+(T10.2, X10.1) pending user-run. Tasks T10.4–T10.8 remain PLANNED. **D-131** (toast channel) and
+**D-133** (profile-management submenu) are FINAL; **D-132** (per-profile hotkeys) remains
+reserved/undecided. Recommended sequence (`ROADMAP.md` §4): T10.1 → T10.5 → T10.2 → T10.6 →
+T10.7; next executable task is **T10.5** (per-profile hotkeys) or **T10.4** (active-profile
+indicator).
