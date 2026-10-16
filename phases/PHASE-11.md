@@ -23,7 +23,7 @@ Gap analysis (`ROADMAP.md` §3, rows 5–7): master-plan Phase 7 acceptance crit
 |---|---|---|---|
 | T11.1 | **Sleep/resume detection** → on resume, re-verify the active profile; if PARTIAL/FAILED, toast + offer re-apply | resume handler | **COMPLETE** |
 | T11.2 | **Device-change notifications** (monitor attach/detach) → update tray status, re-resolve, never go stale | `WM_DEVICECHANGE` handler | **COMPLETE** |
-| T11.3 | **Configurable auto-recovery on startup** (re-apply active profile, gated + verified) | startup auto-apply policy | **PLANNED** |
+| T11.3 | **Configurable auto-recovery on startup** (re-apply active profile, gated + verified) | startup auto-apply policy | **COMPLETE** |
 | T11.4 | **Multiple recovery checkpoints** (keep last-N verified profiles); `recover <profile>` | checkpoint history + subcommand | **PLANNED** |
 | T11.5 | **Deferred-identity re-validation:** on resume/hotplug, re-run the identity resolver and flag any entry that became AMBIGUOUS/UNKNOWN | resolver re-run on events | **PLANNED** |
 
@@ -59,7 +59,7 @@ Complete only when all of the following are satisfied with at least one OBSERVED
 
 | ID | Decision | Status |
 |---|---|---|
-| D-141 | Auto-recovery-on-startup default (off vs. on) and its verification gate | **PENDING** (reserved 2026-09-26 as "D-133"; **renumbered to D-141 2026-10-16** because D-133 was reassigned to Phase 10 T10.3. Not yet decided; T11.3) |
+| D-141 | Auto-recovery-on-startup **OFF by default (opt-in)**; when enabled it verifies first and re-applies only when degraded, through the gated+verified recover path; never claims full restore when a display is missing. | **FINAL (2026-10-16)** (reserved 2026-09-26 as "D-133"; **renumbered to D-141 2026-10-16** because D-133 was reassigned to Phase 10 T10.3) |
 | D-134 | Recovery checkpoint history size / retention | **PENDING** (reserved 2026-09-26, not yet decided; T11.4) |
 
 ## Actual Results
@@ -146,7 +146,45 @@ The monitor unplug/replug **gate item** (X11.2 / A8 / R2) remains **pending user
 (the TV E5 is NOT observable — always-on EDID; X11.2 must use a monitor that truly disconnects). No
 new decision (reuses the OBSERVED read-only `verify` path + last-known-good state).
 
+### T11.3 — Configurable auto-recovery on startup: COMPLETE (2026-10-16, target HW, OBSERVED for build/test; auto-recovery gate item X11.3 pending user-run)
+
+Implemented in `product/src/core/settings.rs` + `product/src/cmd/tray.rs`:
+
+- `product/src/core/settings.rs`: `Settings` gained `auto_recovery: bool` (**opt-in, default
+  `false`** — D-141), `#[serde(default)]` like the other fields, so a v1.1 settings.json parses
+  unchanged. `Default for Settings` sets `auto_recovery: false`. Existing tests updated
+  (`settings_round_trip_through_file` now uses `auto_recovery: true`;
+  `default_has_toasts_enabled` + `unknown_keys_ignored_and_missing_keys_default` also assert
+  `!s.auto_recovery`) and one new test `auto_recovery_is_opt_in_and_round_trips`.
+- `product/src/cmd/tray.rs`: new `ID_SETTINGS_AUTORECOVERY = 0xF012` + `MenuAction::ToggleAutoRecovery`
+  (`action_for` maps the id; `dispatch_action` → `toggle_auto_recovery`); `append_settings_submenu`
+  appends `Auto-recovery on startup: on/off` after the autostart item; `toggle_auto_recovery`
+  mirrors `toggle_toasts` (persist + status + log).
+- New `auto_recover_on_startup(hwnd)`: reads last-known-good (no record → log + return), enumerates
+  the live topology, `verify_profile`s; when OK it logs "already matches - no re-apply" and returns;
+  when degraded it logs the verdict + finding count and calls the existing gated + verified
+  `recover_now`, so the true PARTIAL/FAILED verdict is surfaced (a missing display is never reported
+  as a full restore).
+- `apply_startup_settings`: the default-profile block now records `applied_default`; when this
+  launch did **not** apply a configured default profile and `settings.auto_recovery` is on, it logs
+  and calls `auto_recover_on_startup` first-verify.
+- Test `action_for_maps_settings_and_undo_ids` extended with
+  `assert_eq!(action_for(ID_SETTINGS_AUTORECOVERY, 3), MenuAction::ToggleAutoRecovery)`.
+- `product/CHANGELOG.md` (`[Unreleased] → Added`) + `product/README.md` (`## Settings` table/JSON
+  + note) updated.
+
+**OBSERVED (target HW):**
+
+- `cargo test --release` → **113 passed; 0 failed** (was 112; +1 test `auto_recovery_is_opt_in_and_round_trips`).
+- `cargo clippy --all-targets --all-features -- -D warnings` → clean (no warnings).
+- `cargo build --release` → `Finished \`release\` profile [optimized]` (clean).
+- `target\release\dis-play.exe --version` → `dis-play 1.0.0-rc`, exit 0.
+
+The auto-recovery-on-startup **gate item** (X11.3) remains **pending user-run** on target HW (start
+the tray against a mismatched topology with auto-recovery enabled → confirm re-apply only after
+verify OK and no false full-restore claim). **Decision D-141 decided FINAL (opt-in, verify-first).**
+
 
 ## Status
 
-**READY (unblocked 2026-10-16)** — tasks T11.1–T11.5 detailed from `ROADMAP.md` §4. Unblocked by Phase 10 completion (2026-10-16, gate verified on target HW). D-134 and D-141 reserved but undecided. No code executed yet; next executable phase when work resumes.
+**IN PROGRESS (2026-10-16)** — tasks T11.1–T11.5 detailed from `ROADMAP.md` §4. T11.1 (sleep/resume re-verify), T11.2 (device-change notifications) and T11.3 (opt-in auto-recovery on startup, D-141 FINAL) implemented on target HW (OBSERVED for build/test); gate items X11.1/X11.2/X11.3 pending user-run. D-134 reserved but undecided. Next executable task: **T11.4** (multiple recovery checkpoints).
