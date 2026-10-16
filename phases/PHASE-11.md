@@ -22,7 +22,7 @@ Gap analysis (`ROADMAP.md` §3, rows 5–7): master-plan Phase 7 acceptance crit
 | # | Task | Output | Status |
 |---|---|---|---|
 | T11.1 | **Sleep/resume detection** → on resume, re-verify the active profile; if PARTIAL/FAILED, toast + offer re-apply | resume handler | **COMPLETE** |
-| T11.2 | **Device-change notifications** (monitor attach/detach) → update tray status, re-resolve, never go stale | `WM_DEVICECHANGE` handler | **PLANNED** |
+| T11.2 | **Device-change notifications** (monitor attach/detach) → update tray status, re-resolve, never go stale | `WM_DEVICECHANGE` handler | **COMPLETE** |
 | T11.3 | **Configurable auto-recovery on startup** (re-apply active profile, gated + verified) | startup auto-apply policy | **PLANNED** |
 | T11.4 | **Multiple recovery checkpoints** (keep last-N verified profiles); `recover <profile>` | checkpoint history + subcommand | **PLANNED** |
 | T11.5 | **Deferred-identity re-validation:** on resume/hotplug, re-run the identity resolver and flag any entry that became AMBIGUOUS/UNKNOWN | resolver re-run on events | **PLANNED** |
@@ -101,6 +101,50 @@ path is built and unit-tested; the live resume event has not yet been observed.
 No new decision (reuses the OBSERVED read-only `verify` path + last-known-good state).
 
 None before T11.1 — Phase 11 execution began with this task.
+
+### T11.2 — Device-change notifications (monitor attach/detach): COMPLETE (2026-10-16, target HW, OBSERVED for build/test; hotplug gate item X11.2 pending user-run)
+
+Implemented in `product/src/cmd/tray.rs`:
+
+- `use` list extended with `DEV_BROADCAST_DEVICEINTERFACE_W`, `DBT_DEVICEARRIVAL`,
+  `DBT_DEVICEREMOVECOMPLETE`, `DBT_DEVTYP_DEVICEINTERFACE`, `DEVICE_NOTIFY_WINDOW_HANDLE`,
+  `HDEVNOTIFY`, `RegisterDeviceNotificationW`, `UnregisterDeviceNotification`, `WM_DEVICECHANGE`
+  (all under the already-enabled `Win32_UI_WindowsAndMessaging` feature) + a new import
+  `windows::Win32::Devices::Display::GUID_DEVINTERFACE_MONITOR` (feature already enabled) +
+  `use std::ffi::c_void`. `DBT_DEVNODES_CHANGED` is imported inside the `tests` module (it is
+  referenced only by the T11.2 unit test, so a top-level import would be an unused-import warning
+  in the non-test lib build).
+- Pure `device_change_is_display_event(u32)` — true only for `DBT_DEVICEARRIVAL` (0x8000) /
+  `DBT_DEVICEREMOVECOMPLETE` (0x8004); every other `WM_DEVICECHANGE` (`DBT_DEVNODES_CHANGED`, …)
+  is ignored.
+- `register_display_notifications(hwnd) -> Option<HDEVNOTIFY>` — builds a
+  `DEV_BROADCAST_DEVICEINTERFACE_W` filter for the `GUID_DEVINTERFACE_MONITOR` interface class and
+  calls `RegisterDeviceNotificationW` with `DEVICE_NOTIFY_WINDOW_HANDLE`. Best-effort: on failure
+  it logs a warning and returns `None` (the tray stays usable; status updates on the next menu open).
+- `unregister_display_notifications(handle)` — `UnregisterDeviceNotification` on teardown.
+- `on_device_change(hwnd)` — logs and calls the shared read-only `event_reverify(hwnd,"display
+  change")` (T11.1 helper; never calls `SetDisplayConfig`).
+- `tray_wnd_proc` gained a `WM_DEVICECHANGE` branch (after `WM_POWERBROADCAST`, before `TRAY_MSG`):
+  refreshes live on `device_change_is_display_event(wparam)`, returns `LRESULT(1)` (handled).
+- `run()`: `register_display_notifications(hwnd)` is the first statement in the startup `unsafe`
+  block; the registration handle is released in teardown (after `DestroyWindow`, before the mutex
+  release).
+- Module-level doc comment: extended the `Phase 11 robustness:` section with the T11.2 line.
+- `product/CHANGELOG.md`: added the T11.2 bullet under `[Unreleased] → Added`.
+- One unit test: `device_change_is_display_event_filters`.
+
+**OBSERVED (target HW):**
+
+- `cargo test --release` → **112 passed; 0 failed** (was 111; +1).
+- `cargo clippy --all-targets --all-features -- -D warnings` → clean (no warnings). A first pass
+  flagged `DBT_DEVNODES_CHANGED` as an unused import in the lib build; resolved by importing it in
+  the `tests` module instead of the top-level `use` list.
+- `cargo build --release` → `Finished \`release\` profile [optimized]` (clean).
+- `target\release\dis-play.exe --version` → `dis-play 1.0.0-rc`, exit 0.
+
+The monitor unplug/replug **gate item** (X11.2 / A8 / R2) remains **pending user-run** on target HW
+(the TV E5 is NOT observable — always-on EDID; X11.2 must use a monitor that truly disconnects). No
+new decision (reuses the OBSERVED read-only `verify` path + last-known-good state).
 
 
 ## Status
