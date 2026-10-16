@@ -32,8 +32,8 @@ Gap analysis (`ROADMAP.md` §3, rows 1–4): the V1 plan's §16 "Save Current…
 | T10.4 | **Active-profile indicator** in tray menu + tooltip (which profile is currently applied / last-known-good) | tray UI | **COMPLETE** (2026-10-16, implemented + `cargo test`/`clippy` OBSERVED on target HW; on-HW menu/tooltip display pending user-run) |
 | T10.5 | **Per-profile hotkeys** (`Ctrl+Alt+W`, `Ctrl+Alt+G`, …) — configurable per profile, replacing/extending the two-profile toggle | per-profile hotkey config + registration | **COMPLETE** (2026-10-16, implemented + `cargo test`/`clippy` OBSERVED on target HW; on-HW hotkey fire/conflict = X10.2 pending user-run) |
 | T10.6 | **Hotkey config UI / "learn by press"**: capture key combos into config; detect & report conflicts | learn-by-press UI + conflict reporting | **COMPLETE** (2026-10-16, implemented + `cargo test`/`clippy` OBSERVED on target HW; on-HW capture/conflict interaction pending user-run) |
-| T10.7 | **Settings surface** (tray menu → small settings window or JSON): hotkeys, default profile, autostart toggle, log level, toast on/off | settings UI + config schema | **PLANNED** |
-| T10.8 | **Recent switches + Undo**: last-N applied profiles in tray; "Undo" re-applies the previous profile | recent list + Undo action | **PLANNED** |
+| T10.7 | **Settings surface** (tray menu → small settings window or JSON): hotkeys, default profile, autostart toggle, log level, toast on/off | settings UI + config schema | **COMPLETE** (2026-10-16, implemented + `cargo test`/`clippy` OBSERVED on target HW; on-HW menu toggles + restart persistence pending user-run) |
+| T10.8 | **Recent switches + Undo**: last-N applied profiles in tray; "Undo" re-applies the previous profile | recent list + Undo action | **COMPLETE** (2026-10-16, implemented + `cargo test`/`clippy` OBSERVED on target HW; on-HW menu interaction pending user-run) |
 
 **API / feasibility notes (from `ROADMAP.md` §4):**
 - T10.2 — WinRT `Windows.UI.Notifications` (Win10+): **DOCUMENTED**; Rust bindings + target-HW behavior = **SPIKE** (add the `winrt` crate in a spike first). **RESOLVED (D-131, 2026-10-16):** the spike chose the tray icon's **shell notification** (`Shell_NotifyIconW` + `NIF_INFO`, already-enabled `Win32_UI_Shell`) over WinRT — it renders as a standard, dismissable system toast on Win10/11 with **no new dependency** and no unpackaged-AppUserModelID/Start-Menu-shortcut requirement. Implemented in T10.2.
@@ -71,6 +71,7 @@ Complete only when all of the following are satisfied with at least one OBSERVED
 | D-131 | Toast notification channel (WinRT vs. tray-only) + opt-out default | **FINAL** (2026-10-16, T10.2): channel = tray icon **shell notification** (`Shell_NotifyIconW` + `NIF_INFO`, no new dependency); opt-out default = **toasts ON** (`settings.json` `{ "toasts": false }` to silence) |
 | D-132 | Hotkey model — per-profile hotkeys; the legacy Ctrl+Alt+D toggle pair is kept (schema migration for `hotkeys.json`) | **FINAL** (2026-10-16, T10.5): additive schema — `HotkeyConfig` gains `bindings: [{ profile, hotkey }]` (`#[serde(default)]`); the legacy `profiles` toggle pair is retained unchanged, so a v1.0 config still parses and the OBSERVED toggle keeps working; a combination needs ≥1 modifier; conflicts (another profile / the built-in toggle / another app) are reported, never silently applied |
 | D-133 | Profile-management surface (T10.3): each tray profile is a **per-profile submenu** (`Apply` / `Rename…` / `Duplicate…` / `Delete`); delete is confirmed via a stock `MessageBoxW` Yes/No; a **rename rewrites** any `hotkeys.json` entry and the last-known-good `source` reference to the new name (the rename-reference spike). No new crate/feature — `Win32_UI_WindowsAndMessaging` already enabled. | **FINAL** (2026-10-16, T10.3; implementation + tests OBSERVED, on-HW menu interaction pending user-run) |
+| D-139 | Settings surface (T10.7) + tray startup semantics: no separate settings window — a tray **`Settings` submenu** (Notifications · Start with Windows · Log level ▸ · Default profile ▸) writes the extended `settings.json` (`{ toasts, autostart, default_profile, log_level }`); **`default_profile` is auto-applied on tray startup** (user opt-in; falls back to last-known-good when unset/missing); **autostart on startup is register-only** (it never removes a Run key set via the CLI — unchecked-then-start leaves the CLI value intact). Additive schema; a missing/malformed file falls back to defaults. No new OS API/crate. | **FINAL** (2026-10-16, T10.7; implementation + tests OBSERVED, on-HW toggles + restart persistence pending user-run) |
 
 ## Actual Results
 
@@ -337,18 +338,102 @@ kept.
 **Decisions:** none new (implements D-132; the learn-by-press UI uses `WM_KEYDOWN` +
 `GetKeyState`, DOCUMENTED).
 
-Other tasks: **T10.7–T10.8 not executed.**
+### T10.7 — Settings surface (COMPLETE, 2026-10-16)
+
+**Implemented (product):**
+
+- **No separate settings window (D-139):** a tray **`Settings` submenu** (`ID_SETTINGS_TOASTS =
+  0xF010`, `ID_SETTINGS_AUTOSTART = 0xF011`, plus `Log level ▸` / `Default profile ▸` child
+  submenus using `ID_BASE_LOGLEVEL = 0x6000` / `ID_BASE_DEFAULT = 0x7000`). Every item writes the
+  config and takes effect immediately (no OK/Apply round-trip) — `MenuAction::{ToggleToasts,
+  ToggleAutostart, SetLogLevel(usize), SetDefaultProfile(usize)}`, mapped in the pure
+  `action_for()` and dispatched from `dispatch_action()`.
+- **`product/src/core/settings.rs`:** `Settings` extended from `{ toasts }` to
+  `{ toasts: bool, autostart: bool, default_profile: Option<String>, log_level: Level }` — all
+  `#[serde(default)]` (additive; a v1.1 `{ "toasts": false }` file still parses), `Default` impl
+  (toasts ON per D-131, autostart off, no default profile, log level Info), plus round-trip /
+  additive-schema / lowercase-serialization tests.
+- **`product/src/logging.rs`:** `Level` gained `serde` derives and a total order
+  (`Error < Warn < Info`, `Default = Info`); a process-wide min level
+  (`static MIN_LEVEL: AtomicU8`, `set_min_level` / `min_level`) now gates `FileLogger::log` via a
+  pure `should_write(level, min)`. `setting_name()` / `level_rank()` give stable names and ranks.
+  (The comparison was written inverted on the first pass and corrected before evidence was taken.)
+- **`product/src/cmd/tray.rs`:** `run()` loads settings early and applies `set_min_level` before
+  anything logs, then calls `apply_startup_settings` — which (a) **registers** autostart when the
+  setting is on (register-only: it never *removes* a Run key the CLI may have set — D-139) and
+  (b) **applies `default_profile`** when set and present on disk (falls back to last-known-good
+  when unset/missing). Helpers: `load_settings_from_disk` / `save_settings_to_disk`,
+  `profile_exists`, `on_off` / `enabled_disabled` / `level_label`, `toggle_toasts`,
+  `toggle_autostart`, `set_log_level`, `set_default_profile`, `append_settings_submenu`.
+- **README / CHANGELOG (`product/README.md`, `product/CHANGELOG.md`):** new **Settings** section
+  (submenu table, `settings.json` shape, restart semantics) + Unreleased entry; the Notifications
+  note now points at the `Settings ▸ Notifications` toggle.
+
+**Evidence (target HW, 2026-10-16):**
+- `cargo check --all-targets`, `cargo clippy --all-targets --all-features -- -D warnings` →
+  clean (**OBSERVED**; the first clippy pass flagged a hand-written `Default for Level` that
+  `#[derive(Default)]` + `#[default]` replaces — fixed).
+- Shared T10.7/T10.8 run: `cargo test --release` → **109/109 pass** (was 99; +10 across
+  `core::settings` additive schema, `logging` order/filter, `core::recent`, tray settings id
+  ranges) (**OBSERVED**); `cargo build --release` clean (**OBSERVED**).
+- `dis-play.exe` **1,636,864 B**, `dis-play-tray.exe` **1,543,680 B** (**OBSERVED**);
+  `dis-play --version` → `dis-play 1.0.0-rc` rc=0 (**OBSERVED**).
+- **Pending user-run (not yet OBSERVED):** open `Settings`, toggle Notifications / Start with
+  Windows / Log level / Default profile, then restart the tray and confirm the settings persisted
+  and that the default profile was re-applied on startup and the log level is honored.
+
+**Gate impact:** Phase-10 gate item 4 ("Settings (autostart, default profile, log level, toast
+on/off) persist and take effect on restart") is **implementation-complete** by T10.7; the
+on-HW restart round-trip is pending user-run.
+
+**Decisions:** **D-139** decided (FINAL) — in-tray `Settings` submenu, `default_profile`
+auto-applied at startup, autostart register-only.
+
+### T10.8 — Recent switches + Undo (COMPLETE, 2026-10-16)
+
+**Implemented (product):**
+
+- **New `product/src/core/recent.rs`** (pure, no Win32): `RECENT_MAX = 5`;
+  `push_recent(list, name)` move-to-front + de-dupe + cap; `undo_target(list)` returns `list[1]`
+  (the profile applied *before* the most recent switch — `list[0]` is the current one); plus tests.
+  Registered in `core/mod.rs` (`pub mod recent;`).
+- **`product/src/cmd/tray.rs`:** a `static RECENT: Mutex<Vec<String>>` records the last-N applied
+  profiles. `record_recent(name)` is called **after a successful apply** in `apply_profile` (so
+  only genuine switches enter history), and the tray seeds history from the last-known-good
+  `source` at startup. The `show_menu` path appends a **`Recent switches`** submenu (newest first,
+  `enabled` per entry when the profile still exists) whose entries **reuse the existing
+  `ID_BASE_PROFILE` ids**, so a recent click rides the same gated `apply_profile` path as the main
+  list. A top-level **`Undo`** item (`ID_UNDO = 0xF006`, `MenuAction::Undo`) re-applies
+  `undo_target()` — also through `apply_profile`, so it toasts/logs and updates history just like
+  any other switch.
+- **README / CHANGELOG:** documented the `Recent switches` + `Undo` menu items.
+
+**Evidence (target HW, 2026-10-16):**
+- Same run as T10.7: `cargo test --release` → **109/109** (includes the `core::recent`
+  move-to-front/de-dupe/cap/`undo_target` tests + the tray recent/undo id assertions)
+  (**OBSERVED**); clippy `-D warnings` clean (**OBSERVED**); release build clean (**OBSERVED**).
+- **Pending user-run (not yet OBSERVED):** apply profile A then B from the tray; confirm
+  `Recent switches` lists B, A (newest first) and that `Undo` re-applies A (and toasts + updates
+  the list back).
+
+**Gate impact:** supports Phase-10 gate item 1 (the tray is a fuller manager with switch history +
+one-click undo); no gate item is exclusively about recent/undo.
+
+**Decisions:** none new — T10.8 reuses the OBSERVED capture/apply path and the last-known-good
+state; the only new logic (bounded history) is pure and unit-tested.
 
 ## Status
 
-**IN PROGRESS (2026-10-16)** — T10.1 (tray "Save Current Configuration…"), T10.2 (toast
-notifications), T10.3 (profile management: rename / delete / duplicate + CLI), T10.4
-(active-profile indicator), T10.5 (per-profile hotkeys) and T10.6 (hotkey config UI /
-learn-by-press) COMPLETE: implemented + `cargo test --release` **99/99** +
-`clippy -D warnings` clean + release build (OBSERVED on target HW); on-HW prompt/menu
-interaction (T10.1, T10.3, T10.4), toast display/opt-out (T10.2, X10.1), and per-profile
-hotkey fire / conflict / capture interaction (T10.5, T10.6, X10.2) pending user-run.
-Tasks T10.7–T10.8 remain PLANNED. **D-131** (toast channel), **D-132** (per-profile hotkeys,
-additive schema) and **D-133** (profile-management submenu) are FINAL. Recommended sequence
-(`ROADMAP.md` §4): T10.1 → T10.5 → T10.2 → T10.6 → T10.7; next executable task is
-**T10.7** (settings surface) or **T10.8** (recent switches + undo).
+**IMPLEMENTATION-COMPLETE / AWAITING ON-HW VERIFICATION (2026-10-16)** — all eight tasks
+(T10.1 tray "Save Current Configuration…", T10.2 toast notifications, T10.3 profile management
+(rename / delete / duplicate + CLI), T10.4 active-profile indicator, T10.5 per-profile hotkeys,
+T10.6 hotkey config UI / learn-by-press, T10.7 settings surface, T10.8 recent switches + Undo)
+are COMPLETE: implemented + `cargo test --release` **109/109** + `clippy -D warnings` clean +
+release build (OBSERVED on target HW). On-HW interaction is pending user-run: prompt/menu
+(T10.1, T10.3, T10.4), toast display/opt-out (T10.2, X10.1), per-profile hotkey fire / conflict /
+capture (T10.5, T10.6, X10.2), settings + recent/undo menu round-trip incl. restart persistence
+(T10.7, T10.8). No phase task remains — the gate cannot be marked complete until the four
+user-run OBSERVED items land. **D-131** (toast channel), **D-132** (per-profile hotkeys, additive
+schema), **D-133** (profile-management submenu) and **D-139** (settings surface + startup
+semantics) are FINAL. Next action: user runs the phase-10 on-HW checks (X10.1, X10.2, plus the
+per-task manual checks) to satisfy the gate.
