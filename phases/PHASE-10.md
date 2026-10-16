@@ -43,10 +43,18 @@ Gap analysis (`ROADMAP.md` §3, rows 1–4): the V1 plan's §16 "Save Current…
 
 ## Experiments / Tests (user-run on target HW)
 
+> **Exact runbook:** the step-by-step on-HW verification script (with an evidence-capture
+> template and gate sign-off) is `phases/PHASE-10-CHECKLIST.md`. The rows below are the
+> summary; the checklist is the authoritative procedure.
+
 | # | Experiment | What to record |
 |---|---|---|
 | X10.1 | **Toast channel (T10.2, R3):** trigger success / PARTIAL / failure applies; check toasts appear, are dismissable, and opt-out is respected on the user's OS (enterprise-policy case if present) | gate item 2; fallback decision (tooltip+log) if toasts are unreliable |
 | X10.2 | **Hotkey conflicts (T10.5, R4):** register the same combo for two profiles → per-key `ERROR_HOTKEY_ALREADY_REGISTERED` surface + conflict message; confirm the menu path still applies the profile | gate item 3 |
+
+Per-task manual checks also in `PHASE-10-CHECKLIST.md`: gate item 1 (Save Current / rename /
+delete / duplicate + restart persistence), gate item 4 (settings + restart round-trip), and the
+supporting T10.4 indicator + T10.8 recent/undo checks.
 
 ## Gate
 
