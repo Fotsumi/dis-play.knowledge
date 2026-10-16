@@ -63,6 +63,13 @@ Decisions that depend on Phase 0 evidence are marked `PENDING-EVIDENCE` and must
 - Required fields (see template in the file): current phase, overall status, last completed work, current work, next action, gates, blockers, questions, decisions, discoveries, experiments, affected docs, product status, date.
 - A stale `STATUS.md` is a process violation — if you are about to stop working, update it first.
 
+## Commit & Push Cadence
+
+- **After every task is completed successfully, commit and push** the resulting changes to the applicable repository: this knowledge repo for docs/evidence/`STATUS.md`, and the separate `product/` repo for implementation changes.
+- A **task** = one completed unit of work (e.g. a phase task such as T9.1, or a discrete self-contained change).
+- Commit **only** the intended changes; never commit secrets. Use Conventional-Commit-style messages matching each repo's history.
+- Do **not** commit work that is in progress, blocked, or incomplete — wait for the task to be done, then commit + push.
+
 ## Product Implementation Instructions
 
 All implementation-specific instructions (Rust conventions, safety rules for SetDisplayConfig, build procedure, crate choices) live in **`product/AGENTS.md`** — not here. This file only governs the knowledge/operations layer.
