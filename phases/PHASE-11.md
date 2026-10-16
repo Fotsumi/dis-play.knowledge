@@ -24,7 +24,7 @@ Gap analysis (`ROADMAP.md` §3, rows 5–7): master-plan Phase 7 acceptance crit
 | T11.1 | **Sleep/resume detection** → on resume, re-verify the active profile; if PARTIAL/FAILED, toast + offer re-apply | resume handler | **COMPLETE** |
 | T11.2 | **Device-change notifications** (monitor attach/detach) → update tray status, re-resolve, never go stale | `WM_DEVICECHANGE` handler | **COMPLETE** |
 | T11.3 | **Configurable auto-recovery on startup** (re-apply active profile, gated + verified) | startup auto-apply policy | **COMPLETE** |
-| T11.4 | **Multiple recovery checkpoints** (keep last-N verified profiles); `recover <profile>` | checkpoint history + subcommand | **PLANNED** |
+| T11.4 | **Multiple recovery checkpoints** (keep last-N verified profiles); `recover <profile>` | checkpoint history + subcommand | **COMPLETE** |
 | T11.5 | **Deferred-identity re-validation:** on resume/hotplug, re-run the identity resolver and flag any entry that became AMBIGUOUS/UNKNOWN | resolver re-run on events | **PLANNED** |
 
 **API / feasibility notes (from `ROADMAP.md` §4):**
@@ -60,7 +60,7 @@ Complete only when all of the following are satisfied with at least one OBSERVED
 | ID | Decision | Status |
 |---|---|---|
 | D-141 | Auto-recovery-on-startup **OFF by default (opt-in)**; when enabled it verifies first and re-applies only when degraded, through the gated+verified recover path; never claims full restore when a display is missing. | **FINAL (2026-10-16)** (reserved 2026-09-26 as "D-133"; **renumbered to D-141 2026-10-16** because D-133 was reassigned to Phase 10 T10.3) |
-| D-134 | Recovery checkpoint history size / retention | **PENDING** (reserved 2026-09-26, not yet decided; T11.4) |
+| D-134 | Recovery checkpoint history keeps up to **10** verified checkpoints in `state/recovery-history.json`, newest first, de-duplicated by profile name; `recover <profile>` re-applies the most recent checkpoint for that profile. Additive schema — `last-known-good.json` unchanged. | **FINAL (2026-10-16)** |
 
 ## Actual Results
 
@@ -184,7 +184,43 @@ The auto-recovery-on-startup **gate item** (X11.3) remains **pending user-run** 
 the tray against a mismatched topology with auto-recovery enabled → confirm re-apply only after
 verify OK and no false full-restore claim). **Decision D-141 decided FINAL (opt-in, verify-first).**
 
+### T11.4 — Multiple recovery checkpoints (D-134): COMPLETE (2026-10-16, target HW, OBSERVED for build/test)
+
+Implemented across `product/src/core/recovery.rs`, `product/src/error.rs`, `product/src/cmd/recover.rs`,
+`product/src/cmd/apply.rs`, `product/src/cmd/tray.rs` and `product/src/main.rs`:
+
+- `product/src/core/recovery.rs`: new `CHECKPOINT_FILE = "recovery-history.json"`,
+  `MAX_CHECKPOINTS = 10`, `checkpoint_path(dir)`, `load_checkpoints(dir)` (missing file → empty
+  history, not an error), `record_checkpoint(dir, source, profile)` (moves `source` to the front,
+  de-duplicates by profile name, truncates to `MAX_CHECKPOINTS`) and `find_checkpoint(dir, name)`
+  (newest-first scan). Additive — `last-known-good.json` is unchanged.
+- `product/src/error.rs`: new `Error::NoCheckpoint(String)` variant (after `NoLastKnownGood`) with its
+  `Display` arm.
+- `product/src/cmd/recover.rs`: the existing `recover` records a checkpoint when the post-recovery
+  verdict is OK; new gated `recover_profile(confirm, name)` re-applies `find_checkpoint(dir, name)`
+  through the same gated + verified path (errors `NoCheckpoint` when absent).
+- `product/src/cmd/apply.rs`: `verify_and_record`'s OK branch also calls `record_checkpoint`.
+- `product/src/cmd/tray.rs`: `apply_profile`'s OK branch and `recover_now`'s OK branch also record a
+  checkpoint.
+- `product/src/main.rs`: `recover <flag> [profile]` dispatches to `recover_profile` when a positional
+  profile name is present, else the original `recover`; usage string updated.
+- `product/CHANGELOG.md` (`[Unreleased] → Added`) + `product/README.md` (CLI table row + state-dir
+  note) updated.
+- Four unit tests: `load_checkpoints_missing_file_is_empty`,
+  `record_checkpoint_is_newest_first_and_dedupes`, `record_checkpoint_caps_at_max`,
+  `find_checkpoint_returns_most_recent_for_name`.
+
+**OBSERVED (target HW):**
+
+- `cargo test --release` → **117 passed; 0 failed** (was 113; +4).
+- `cargo clippy --all-targets --all-features -- -D warnings` → clean (no warnings).
+- `cargo build --release` → `Finished \`release\` profile [optimized]` (clean).
+- `target\release\dis-play.exe --version` → `dis-play 1.0.0-rc`, exit 0.
+
+**Decision D-134 decided FINAL** (10 checkpoints, newest first, de-duplicated by profile name,
+`recover <profile>`; additive schema).
+
 
 ## Status
 
-**IN PROGRESS (2026-10-16)** — tasks T11.1–T11.5 detailed from `ROADMAP.md` §4. T11.1 (sleep/resume re-verify), T11.2 (device-change notifications) and T11.3 (opt-in auto-recovery on startup, D-141 FINAL) implemented on target HW (OBSERVED for build/test); gate items X11.1/X11.2/X11.3 pending user-run. D-134 reserved but undecided. Next executable task: **T11.4** (multiple recovery checkpoints).
+**IN PROGRESS (2026-10-16)** — tasks T11.1–T11.5 detailed from `ROADMAP.md` §4. T11.1 (sleep/resume re-verify), T11.2 (device-change notifications), T11.3 (opt-in auto-recovery on startup, D-141 FINAL) and T11.4 (rolling recovery checkpoints, D-134 FINAL) implemented on target HW (OBSERVED for build/test); gate items X11.1/X11.2/X11.3 pending user-run. Next executable task: **T11.5** (deferred-identity re-validation).
