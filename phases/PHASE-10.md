@@ -27,7 +27,7 @@ Gap analysis (`ROADMAP.md` §3, rows 1–4): the V1 plan's §16 "Save Current…
 | # | Task | Output | Status |
 |---|---|---|---|
 | T10.1 | Tray **Save Current Configuration…** (prompted name, capture live topology via the existing `profile capture` path) | tray menu action + saved profile | **COMPLETE** (2026-10-16, implemented + `cargo test`/`clippy` OBSERVED on target HW; on-HW prompt interaction pending user-run) |
-| T10.2 | **Toast notifications** for success / PARTIAL / failure (dismissable, non-intrusive; opt-out in config) | toast on every switch | **PLANNED** |
+| T10.2 | **Toast notifications** for success / PARTIAL / failure (dismissable, non-intrusive; opt-out in config) | toast on every switch | **COMPLETE** (2026-10-16, implemented + `cargo test`/`clippy` OBSERVED on target HW; on-HW toast display via X10.1 pending user-run) |
 | T10.3 | **Profile management in tray** (rename, delete, duplicate) + CLI (`profile rename`/`delete`/`dup`) | management menu actions + CLI subcommands | **PLANNED** |
 | T10.4 | **Active-profile indicator** in tray menu + tooltip (which profile is currently applied / last-known-good) | tray UI | **PLANNED** |
 | T10.5 | **Per-profile hotkeys** (`Ctrl+Alt+W`, `Ctrl+Alt+G`, …) — configurable per profile, replacing/extending the two-profile toggle | per-profile hotkey config + registration | **PLANNED** |
@@ -36,7 +36,7 @@ Gap analysis (`ROADMAP.md` §3, rows 1–4): the V1 plan's §16 "Save Current…
 | T10.8 | **Recent switches + Undo**: last-N applied profiles in tray; "Undo" re-applies the previous profile | recent list + Undo action | **PLANNED** |
 
 **API / feasibility notes (from `ROADMAP.md` §4):**
-- T10.2 — WinRT `Windows.UI.Notifications` (Win10+): **DOCUMENTED**; Rust bindings + target-HW behavior = **SPIKE** (add the `winrt` crate in a spike first).
+- T10.2 — WinRT `Windows.UI.Notifications` (Win10+): **DOCUMENTED**; Rust bindings + target-HW behavior = **SPIKE** (add the `winrt` crate in a spike first). **RESOLVED (D-131, 2026-10-16):** the spike chose the tray icon's **shell notification** (`Shell_NotifyIconW` + `NIF_INFO`, already-enabled `Win32_UI_Shell`) over WinRT — it renders as a standard, dismissable system toast on Win10/11 with **no new dependency** and no unpackaged-AppUserModelID/Start-Menu-shortcut requirement. Implemented in T10.2.
 - T10.5 — `RegisterHotKey`: **DOCUMENTED** (already used in T6.3); multi-hotkey registration + per-key `ERROR_HOTKEY_ALREADY_REGISTERED` (1409) handling = **SPIKE**.
 - T10.1/T10.3/T10.4/T10.8 — reuse OBSERVED existing paths/state (capture, lkg, apply); file ops on the `%LOCALAPPDATA%\dis-play` dirs, no new OS API.
 - T10.7 — registry autostart already exists (T7.3); new keys go into `%LOCALAPPDATA%\dis-play\config` (OBSERVED dir).
@@ -59,8 +59,8 @@ Complete only when all of the following are satisfied with at least one OBSERVED
 
 ## Potential Blockers / Open Questions
 
-- **Toast channel unproven in Rust (R3):** T10.2 needs a WinRT-bindings spike before committing to toast as the notification channel; **fallback: tray tooltip + log** if toasts are unreliable on the user's OS/policy.
-- **Toast policy:** opt-in/out + "do not disturb" behavior must be validated on the **user's** OS (some apps/enterprise policies suppress toasts).
+- ~~**Toast channel unproven in Rust (R3):** T10.2 needs a WinRT-bindings spike before committing to toast as the notification channel; **fallback: tray tooltip + log** if toasts are unreliable on the user's OS/policy.~~ **RESOLVED (2026-10-16, D-131):** the spike chose the tray icon's **shell notification** (`Shell_NotifyIconW` + `NIF_INFO`) — no new dependency; the tooltip + log remain the fallback.
+- **Toast policy:** opt-out + "do not disturb" behavior must still be validated on the **user's** OS (some apps/enterprise policies suppress toasts) — X10.1 (user-run).
 - **T10.3 rename references:** rename = save-as + delete + update any hotkey/auto-refs to the new name (**SPIKE**).
 - **Suggested sequence (`ROADMAP.md` §4):** T10.1 → T10.5 → T10.2 → T10.6 → T10.7 (highest value first).
 
@@ -68,7 +68,7 @@ Complete only when all of the following are satisfied with at least one OBSERVED
 
 | ID | Decision | Status |
 |---|---|---|
-| D-131 | Toast notification channel (WinRT vs. tray-only) + opt-out default | **PENDING** (reserved 2026-09-26, not yet decided; T10.2 spike will inform it) |
+| D-131 | Toast notification channel (WinRT vs. tray-only) + opt-out default | **FINAL** (2026-10-16, T10.2): channel = tray icon **shell notification** (`Shell_NotifyIconW` + `NIF_INFO`, no new dependency); opt-out default = **toasts ON** (`settings.json` `{ "toasts": false }` to silence) |
 | D-132 | Hotkey model — replace the two-profile toggle with per-profile hotkeys (schema migration for `hotkeys.json`) | **PENDING** (reserved 2026-09-26, not yet decided; T10.5) |
 
 ## Actual Results
@@ -114,14 +114,65 @@ Complete only when all of the following are satisfied with at least one OBSERVED
 **partially satisfied** by T10.1 (Save Current); the rename/delete/duplicate half is T10.3.
 
 **Decisions:** none new — T10.1 reuses OBSERVED paths and introduces no new behavior choice.
-D-131 (toast channel) / D-132 (per-profile hotkeys) remain **PENDING** (untouched).
+D-131 (toast channel) was decided later by **T10.2**; D-132 (per-profile hotkeys) remains
+**PENDING** (untouched by T10.1).
+
+### T10.2 — Toast notifications (COMPLETE, 2026-10-16)
+
+**Implemented (product):**
+
+- **Channel decision (D-131):** the tray icon's **shell notification**
+  (`Shell_NotifyIconW` + `NIF_INFO`), not WinRT. On Windows 10/11 the shell renders this as a
+  standard, **dismissable system toast** (recorded in the Action Center) and honors quiet
+  hours — with the already-enabled `Win32_UI_Shell` feature and **no new dependency** (WinRT
+  would have added the `winrt`/`windows`-WinRT surface *and* an unpackaged-AppUserModelID
+  requirement). Documented in `product/src/windows/toast.rs`.
+- **New `product/src/windows/toast.rs`:** `ToastKind { Info, Warning, Error }` →
+  `NIIF_INFO`/`NIIF_WARNING`/`NIIF_ERROR` (+`NIIF_RESPECT_QUIET_TIME`); `show(base, kind,
+  title, body)` sets `NIF_INFO` on the passed `NOTIFYICONDATAW` and calls `NIM_MODIFY`,
+  clamping the fixed `szInfo` (`[u16; 256]`) / `szInfoTitle` (`[u16; 64]`) fields. Best-effort
+  (returns `bool`, never panics) — the tooltip + log stay the fallback.
+- **New `product/src/core/settings.rs`:** `Settings { toasts: bool }` (`#[serde(default)]`,
+  default **ON** — opt-out per D-131) at `%LOCALAPPDATA%\dis-play\config\settings.json`; a
+  missing/malformed file falls back to the defaults (never fatal); `load_settings` /
+  `save_settings` (the latter is the write path T10.7 will reuse). Additive schema so T10.7's
+  hotkeys / default-profile / log-level keys can extend it without breaking a v1.1 file.
+- **`product/src/cmd/tray.rs`:** a `notify()` helper (checks the opt-out, shows the toast,
+  logs `toast [kind] title: body`); pure message builders `kind_for_verdict` (OK→info,
+  PARTIAL→warning, FAILED→error), `fail_toast`, `verdict_toast`. Wired into every **switch**:
+  `apply_profile` (load error / rc≠0 / rc=0-but-query-failed / OK / PARTIAL / FAILED),
+  `recover_now` (error / rc≠0 / query failed / verdict), and the manual `verify_now` verdict.
+  The hotkey toggle rides the same `apply_profile`, so it toasts too.
+- **README** (`product/README.md`): new **Notifications** section (outcome→toast table,
+  opt-out JSON, quiet-hours note) + tray/uninstall/troubleshooting updates. **CHANGELOG**
+  (`product/CHANGELOG.md`): Unreleased entries for T10.1 + T10.2.
+
+**Evidence (target HW, 2026-10-16):**
+- `cargo check --all-targets` clean; `cargo clippy --all-targets --all-features -- -D warnings`
+  clean (**OBSERVED**).
+- `cargo test --release` → **72/72 pass** (was 60; +12: `core::settings` 5,
+  `windows::toast` 3, `cmd::tray` 4 toast/verdict tests) (**OBSERVED**).
+- `cargo build --release` clean; `dis-play.exe` 1,542,144 B, `dis-play-tray.exe` 1,441,280 B
+  (**OBSERVED**); `dis-play --version` → `dis-play 1.0.0-rc` rc=0 (**OBSERVED**).
+- **Pending user-run (X10.1, not yet OBSERVED):** trigger success / PARTIAL / failure applies
+  on the user's OS; confirm the toasts appear, are dismissable, and that
+  `{ "toasts": false }` in `settings.json` silences them (enterprise-policy case included).
+
+**Gate impact:** Phase-10 gate item 2 ("every switch shows a dismissable toast; opt-out
+respected") is **partially satisfied** by T10.2 — implementation + tests OBSERVED; the on-HW
+toast display + opt-out is X10.1 (user-run).
+
+**Decisions:** **D-131** decided (FINAL) — shell-notification channel, toasts ON by default
+opt-out. D-132 remains PENDING (T10.5).
 
 Other tasks: **none executed.**
 
 ## Status
 
-**IN PROGRESS (2026-10-16)** — T10.1 (tray "Save Current Configuration…") COMPLETE: implemented
-+ `cargo test --release` 60/60 + `clippy -D warnings` clean + release build (OBSERVED on target
-HW); on-HW prompt interaction pending user-run. Tasks T10.2–T10.8 remain PLANNED. D-131/D-132
-reserved but undecided. Recommended sequence (`ROADMAP.md` §4): T10.1 → T10.5 → T10.2 → T10.6 →
-T10.7; next executable task is **T10.5** (per-profile hotkeys) or T10.3 (profile management).
+**IN PROGRESS (2026-10-16)** — T10.1 (tray "Save Current Configuration…") and T10.2 (toast
+notifications) COMPLETE: implemented + `cargo test --release` 72/72 + `clippy -D warnings`
+clean + release build (OBSERVED on target HW); on-HW prompt interaction (T10.1) and toast
+display/opt-out (T10.2, X10.1) pending user-run. Tasks T10.3–T10.8 remain PLANNED. **D-131**
+(toast channel) is FINAL; **D-132** (per-profile hotkeys) remains reserved/undecided.
+Recommended sequence (`ROADMAP.md` §4): T10.1 → T10.5 → T10.2 → T10.6 → T10.7; next executable
+task is **T10.5** (per-profile hotkeys) or T10.3 (profile management).
