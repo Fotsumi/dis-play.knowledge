@@ -21,7 +21,7 @@ Gap analysis (`ROADMAP.md` §3, rows 5–7): master-plan Phase 7 acceptance crit
 
 | # | Task | Output | Status |
 |---|---|---|---|
-| T11.1 | **Sleep/resume detection** → on resume, re-verify the active profile; if PARTIAL/FAILED, toast + offer re-apply | resume handler | **PLANNED** |
+| T11.1 | **Sleep/resume detection** → on resume, re-verify the active profile; if PARTIAL/FAILED, toast + offer re-apply | resume handler | **COMPLETE** |
 | T11.2 | **Device-change notifications** (monitor attach/detach) → update tray status, re-resolve, never go stale | `WM_DEVICECHANGE` handler | **PLANNED** |
 | T11.3 | **Configurable auto-recovery on startup** (re-apply active profile, gated + verified) | startup auto-apply policy | **PLANNED** |
 | T11.4 | **Multiple recovery checkpoints** (keep last-N verified profiles); `recover <profile>` | checkpoint history + subcommand | **PLANNED** |
@@ -64,7 +64,44 @@ Complete only when all of the following are satisfied with at least one OBSERVED
 
 ## Actual Results
 
-None — no tasks executed yet. Per user instruction (2026-09-26), documentation only: no new task or phase was executed.
+### T11.1 — Sleep/resume detection: COMPLETE (2026-10-16, target HW, OBSERVED for build/test; sleep→wake gate item X11.1 pending user-run)
+
+Implemented in `product/src/cmd/tray.rs`:
+
+- `use` list extended with `PBT_APMRESUMEAUTOMATIC`, `PBT_APMRESUMESUSPEND`, `WM_POWERBROADCAST`
+  (all present under the already-enabled `Win32_UI_WindowsAndMessaging` feature).
+- Two pure helpers near the other small pure helpers: `power_event_is_resume(u32)` (true for
+  `PBT_APMRESUMEAUTOMATIC` = 18 and `PBT_APMRESUMESUSPEND` = 7) and
+  `resume_needs_attention(VerifyStatus)` (true unless OK).
+- Shared, **read-only** re-verify helper `event_reverify(hwnd, reason)` (used by T11.1 now;
+  intended for re-use by T11.2 display-change and T11.5 deferred-identity events): resolves app
+  dirs, loads last-known-good, enumerates the live topology, calls `verify_profile`, updates the
+  tray status, logs at the verdict severity, and — when degraded — raises a toast pointing at
+  `Recover last-known-good`. It never calls `SetDisplayConfig`.
+- `on_resume(hwnd)` logs the resume and calls `event_reverify(hwnd, "resumed")`.
+- `tray_wnd_proc` gained a `WM_POWERBROADCAST` branch (after the `WM_HOTKEY` block, before
+  `TRAY_MSG`) that calls `on_resume` for resume `wParam` values and returns `LRESULT(1)`
+  (TRUE = handled). The existing modal-dialog guard (`prompt::is_active() ||
+  hotkey_capture::is_active()`) remains at the top of the proc.
+- Module-level doc comment: added a `Phase 11 robustness:` section noting T11.1.
+- `product/CHANGELOG.md`: added the T11.1 bullet under `[Unreleased] → Added`.
+- Two unit tests: `power_event_is_resume_matches_resume_events`,
+  `resume_needs_attention_only_when_not_ok`.
+
+**OBSERVED (target HW):**
+
+- `cargo test --release` → **111 passed; 0 failed** (was 109; +2).
+- `cargo clippy --all-targets --all-features -- -D warnings` → clean (no warnings).
+- `cargo build --release` → `Finished \`release\` profile [optimized]` (clean).
+- `target\release\dis-play.exe --version` → `dis-play 1.0.0-rc`, exit 0.
+
+The sleep→wake **gate item** (X11.1 / A7) remains **pending user-run** on target HW — the code
+path is built and unit-tested; the live resume event has not yet been observed.
+
+No new decision (reuses the OBSERVED read-only `verify` path + last-known-good state).
+
+None before T11.1 — Phase 11 execution began with this task.
+
 
 ## Status
 
