@@ -25,7 +25,7 @@ Gap analysis (`ROADMAP.md` §3, rows 5–7): master-plan Phase 7 acceptance crit
 | T11.2 | **Device-change notifications** (monitor attach/detach) → update tray status, re-resolve, never go stale | `WM_DEVICECHANGE` handler | **COMPLETE** |
 | T11.3 | **Configurable auto-recovery on startup** (re-apply active profile, gated + verified) | startup auto-apply policy | **COMPLETE** |
 | T11.4 | **Multiple recovery checkpoints** (keep last-N verified profiles); `recover <profile>` | checkpoint history + subcommand | **COMPLETE** |
-| T11.5 | **Deferred-identity re-validation:** on resume/hotplug, re-run the identity resolver and flag any entry that became AMBIGUOUS/UNKNOWN | resolver re-run on events | **PLANNED** |
+| T11.5 | **Deferred-identity re-validation:** on resume/hotplug, re-run the identity resolver and flag any entry that became AMBIGUOUS/UNKNOWN | resolver re-run on events | **COMPLETE** |
 
 **API / feasibility notes (from `ROADMAP.md` §4):**
 - T11.1 — `WM_POWERBROADCAST` + `SetPowerBroadcastStatus`: **DOCUMENTED**; target-HW behavior = **OBSERVED** needed.
@@ -220,7 +220,49 @@ Implemented across `product/src/core/recovery.rs`, `product/src/error.rs`, `prod
 **Decision D-134 decided FINAL** (10 checkpoints, newest first, de-duplicated by profile name,
 `recover <profile>`; additive schema).
 
+### T11.5 — Deferred identity re-validation on events (A7/A8): COMPLETE (2026-10-16, target HW, OBSERVED for build/test; live event confirmation X11.1/X11.2 pending user-run)
+
+Implemented as a new pure module `product/src/core/revalidate.rs` + wiring in
+`product/src/cmd/tray.rs`:
+
+- New `product/src/core/revalidate.rs` (registered in `product/src/core/mod.rs` between
+  `resolver` and `settings`): pure, no Windows calls. Types `EntryState` (`Unique` / `Ambiguous`
+  / `Unknown`), `EntryResolution` (`index`, `path_prefix`, `state`), `Revalidation`
+  (`entries`, `ambiguous`, `unknown`) with `stale() == ambiguous + unknown`. `revalidate(profile,
+  live)` re-runs `core::resolver::resolve` for **every** entry of the profile against the live
+  candidates; only **enabled** entries contribute to the `ambiguous` / `unknown` counts (a disabled
+  entry that is absent by design is not a problem), while all entries still get a recorded state
+  and a report row. This is the A7/A8 mitigation — a saved entry is matched by **evidence** again,
+  so no stale `DISPLAYn` binding survives a wake or a plug/unplug.
+- `product/src/cmd/tray.rs` `event_reverify`: inside the `Ok(live)` arm, after the existing
+  verification status/log/toast block, the active profile is re-validated
+  (`crate::core::revalidate::revalidate(&record.profile, &live)`). When `rv.stale() > 0` it sets
+  the tray status (`"{reason} - N of M profile entries no longer resolve by evidence (A ambiguous,
+  U unknown)"`), logs a warning, and raises a `ToastKind::Warning` toast
+  (`DIS-PLAY - <reason>, identity re-validation`) pointing the user at the profile before
+  recovering. Read-only — never calls `SetDisplayConfig`; inherited by both resume (T11.1) and
+  display-change (T11.2) events through the shared helper.
+- `product/CHANGELOG.md` (`[Unreleased] → Added`) updated.
+- Four unit tests: `unique_topology_is_not_stale`, `absent_enabled_display_is_unknown`,
+  `identical_units_are_ambiguous`, `disabled_absent_entry_is_not_counted`.
+
+**OBSERVED (target HW):**
+
+- `cargo test --release` → **121 passed; 0 failed** (was 117; +4).
+- `cargo clippy --all-targets --all-features -- -D warnings` → clean (no warnings).
+- `cargo build --release` → `Finished \`release\` profile [optimized]` (clean).
+- `target\release\dis-play.exe --version` → `dis-play 1.0.0-rc`, exit 0.
+
+No new decision (reuses the OBSERVED pure `core::resolver`). The live-event confirmation
+(X11.1 sleep→wake / X11.2 hotplug) remains **pending user-run** on target HW.
 
 ## Status
 
-**IN PROGRESS (2026-10-16)** — tasks T11.1–T11.5 detailed from `ROADMAP.md` §4. T11.1 (sleep/resume re-verify), T11.2 (device-change notifications), T11.3 (opt-in auto-recovery on startup, D-141 FINAL) and T11.4 (rolling recovery checkpoints, D-134 FINAL) implemented on target HW (OBSERVED for build/test); gate items X11.1/X11.2/X11.3 pending user-run. Next executable task: **T11.5** (deferred-identity re-validation).
+**COMPLETE (2026-10-16)** — all tasks T11.1–T11.5 implemented on target HW (OBSERVED for
+build/test): T11.1 (sleep/resume re-verify), T11.2 (device-change notifications), T11.3 (opt-in
+auto-recovery on startup, D-141 FINAL), T11.4 (rolling recovery checkpoints, D-134 FINAL) and
+T11.5 (deferred identity re-validation on resume/hotplug). **121/121 tests, clippy clean, release
+build clean.** The phase **gate** (X11.1 sleep→wake, X11.2 monitor unplug/replug, X11.3
+auto-recovery-on-startup, A7/A8 acceptance) remains **user-run on live HW** — no live power/hotplug
+event has yet been observed, so the phase is code-complete but its gate is not yet satisfied.
+
