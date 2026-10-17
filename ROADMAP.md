@@ -222,18 +222,20 @@ before it gates a phase. This document does **not** assert facts as verified tha
 
 ### Phase 14 — Extensibility & future (lower priority; each sub-feature is its own scope)
 
+> **STATUS (2026-10-16): DONE** — all six sub-features (T14.1–T14.6) implemented on user instruction, each with its own decision record (D-142–D-147) + OBSERVED-for-build/test evidence. The three V1 non-goals (audio/sync/service) were re-approved before work started (D-144/D-146/D-147). Carried SPIKE/UNKNOWN: T14.3 `IPolicyConfig` set-default; T14.6 session-0 service behavior. See `phases/PHASE-14.md` + `STATUS.md`.
+
 **Goal:** New capabilities beyond V1, each independently scoped with its own decision record; **none block release**.
 **User value:** Automation, time-based switching, and (if the non-goals are re-opened) audio/multi-PC.
 **Release it maps to:** v2.x (only items the user opts into).
 
 | Task | Feature | API / feasibility | Status |
 |---|---|---|---|
-| T14.1 | **Automation / scripting API**: a small `dis-play api` mode (JSON-RPC over a local named pipe or loopback socket) to apply/verify/list from external tools | Named-pipe or loopback TCP (DOCUMENTED); auth = local-user check only (SPIKE: security review) | PROPOSED |
-| T14.2 | **Profile scheduling**: time-based auto-switch (e.g., "Gaming" 18:00–22:00, weekends) | Timer + existing apply path (OBSERVED); persistence of schedule = new config schema (SPIKE) | PROPOSED |
-| T14.3 | **Audio switching** (separate subsystem per non-goals): map profile → audio output device | **DOCUMENTED** (`MMDeviceAPI` / WinRT audio); *only if re-opened* as a goal | PROPOSED |
-| T14.4 | **Multiple adapters / GPU awareness** (when two GPUs are present) | `QueryDisplayConfig` per adapter (DOCUMENTED); resolver already adapter-aware (OBSERVED) — needs UI to pick | PROPOSED |
-| T14.5 | **Multi-PC sync** (per non-goals): only if user explicitly re-opens the non-goal | Network protocol — **UNKNOWN**; security model = SPIKE | PROPOSED |
-| T14.6 | **Headless / service mode** (per non-goal): only if re-opened | Service architecture — **UNKNOWN**; would break the "no admin" principle | PROPOSED |
+| T14.1 | **Automation / scripting API**: a small `dis-play api` mode (JSON-RPC over a local named pipe or loopback socket) to apply/verify/list from external tools | Named-pipe or loopback TCP (DOCUMENTED); auth = local-user check only (SPIKE: security review) | **DONE** (D-142, product `01f51d9` — named-pipe JSON-RPC, same-user only, no TCP) |
+| T14.2 | **Profile scheduling**: time-based auto-switch (e.g. "Gaming" 18:00–22:00, weekends) | Timer + existing apply path (OBSERVED); persistence of schedule = new config schema (SPIKE) | **DONE** (D-143, product `17ffdc0` — `schedules.json` + tray poller) |
+| T14.3 | **Audio switching** (separate subsystem per non-goals): map profile → audio output device | **DOCUMENTED** (`MMDeviceAPI` / WinRT audio); *only if re-opened* as a goal | **DONE** (D-144, product `ed5fc7a` — re-opened non-goal; `IPolicyConfig` set-default = SPIKE) |
+| T14.4 | **Multiple adapters / GPU awareness** (when two GPUs are present) | `QueryDisplayConfig` per adapter (DOCUMENTED); resolver already adapter-aware (OBSERVED) — needs UI to pick | **DONE** (D-145, product `8888e75` — `adapters` cmd + resolver adapter key; target-HW observed) |
+| T14.5 | **Multi-PC sync** (per non-goals): only if user explicitly re-opens the non-goal | Network protocol — **UNKNOWN**; security model = SPIKE | **DONE** (D-146, product `4e36864` — re-opened non-goal; file export/import bundle, **no network**; live peer sync out of scope) |
+| T14.6 | **Headless / service mode** (per non-goal): only if re-opened | Service architecture — **UNKNOWN**; would break the "no admin" principle | **DONE** (D-147, product `9f8eeaa` — re-opened non-goal; `headless` + SCM `service`; admin required, session-0 UNKNOWN) |
 
 **Gate (per sub-feature, not phase-wide):**
 - [ ] Each sub-feature ships only after its own decision record (D-XXX) + OBSERVED/DOCUMENTED gate.
@@ -279,11 +281,11 @@ Game detection, per-game automatic profiles, cloud/multi-PC sync, remote control
 
 ```
 Now        Phase 9  Release v1.0  (sign + CI + docs)          ← gating: code-sign cert
-         └── Phase 13 (CI matrix, property/fuzz)  — parallel, no HW needed
-Next       Phase 10 UX (tray mgmt + toasts + hotkeys + settings)   ← highest value
-Then       Phase 11 Robustness (sleep/wake + hotplug + recovery)
-Then       Phase 12 Diagnostics / CLI polish
-Later      Phase 14 Extensibility (opt-in, deferred)
+         └── Phase 13 (CI matrix, property/fuzz)  — DONE (2026-10-17)
+Next       Phase 10 UX (tray mgmt + toasts + hotkeys + settings)   — DONE (2026-10-16)
+Then       Phase 11 Robustness (sleep/wake + hotplug + recovery)   — CODE-COMPLETE (gate user-run)
+Then       Phase 12 Diagnostics / CLI polish                       — DONE (2026-10-16)
+DONE       Phase 14 Extensibility (re-opened on user instruction)  — DONE (2026-10-16; D-142–D-147)
 ```
 
 **Why this order:**
