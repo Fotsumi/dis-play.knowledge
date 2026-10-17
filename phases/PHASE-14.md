@@ -21,7 +21,7 @@ Gap analysis (`ROADMAP.md` §3, row 12; master plan §22 + non-goals §3): autom
 
 | # | Task | Output | Status |
 |---|---|---|---|
-| T14.1 | **Automation / scripting API:** a small `dis-play api` mode (JSON-RPC over a local named pipe or loopback socket) to apply/verify/list from external tools | `dis-play api` + security review | **IN PROGRESS** |
+| T14.1 | **Automation / scripting API:** a small `dis-play api` mode (JSON-RPC over a local named pipe or loopback socket) to apply/verify/list from external tools | `dis-play api` + security review | **COMPLETE** (2026-10-16, product commit `01f51d9`, 185 tests, clippy/fmt clean — D-142) |
 | T14.2 | **Profile scheduling:** time-based auto-switch (e.g. "Gaming" 18:00–22:00, weekends) | scheduler + schedule schema | **IN PROGRESS** |
 | T14.3 | **Audio switching** (separate subsystem per non-goals): map profile → audio output device | audio subsystem | **IN PROGRESS (re-opened — D-144)** |
 | T14.4 | **Multiple adapters / GPU awareness** (when two GPUs are present): resolver already adapter-aware (OBSERVED) — needs UI to pick | adapter pick UI | **IN PROGRESS** |
@@ -57,6 +57,8 @@ Recorded **2026-10-16** on user instruction to execute all Phase 14 tasks (the p
 ## Actual Results
 
 Executed 2026-10-16 (all six tasks) under user instruction. See `STATUS.md` §Current Work / §Last Completed Work for per-task results, test counts and evidence. Per-task gate evidence recorded as each task completes.
+
+- **T14.1 (D-142) — Automation/scripting API: COMPLETE (2026-10-16, product commit `01f51d9`, OBSERVED for build/test).** New pure `src/core/api.rs` (JSON-RPC 2.0 dispatcher: `METHODS`, `ApiError`, `ApiBackend` trait, `dispatch`/`route`; +24 unit tests with a mock backend), thin `src/windows/pipe.rs` transport on `\\.\pipe\dis-play-api` (`PIPE_REJECT_REMOTE_CLIENTS` + creator default DACL = same-user only), and `src/cmd/api.rs` `RealBackend` wired to the same `cmd`/`core` functions as the CLI. Read-only methods (`ping`, `version`, `list`, `targets`, `identity`, `diagnose`, `profiles.list`, `profiles.show`, `validate`, `verify`) + **gated** `apply`/`recover` requiring `"confirm": true` (D-002). `dis-play api` runs the server. `help.rs`/`main.rs`/`Cargo.toml` features (`Win32_System_Pipes`, `Win32_Storage_FileSystem`, `Win32_System_IO`) updated; README "Automation API" section + CHANGELOG entry. **OBSERVED:** `cargo test --release` → **185 passed** (161 → +24), clippy `-D warnings` + `cargo fmt --check` clean, release build clean, `--version` rc=0; end-to-end pipe round-trips (`version` ok, `apply` without confirm → `-32000`, unknown method → `-32601`, bad params → `-32602`).
 
 ## Status
 
