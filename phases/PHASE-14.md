@@ -21,19 +21,19 @@ Gap analysis (`ROADMAP.md` §3, row 12; master plan §22 + non-goals §3): autom
 
 | # | Task | Output | Status |
 |---|---|---|---|
-| T14.1 | **Automation / scripting API:** a small `dis-play api` mode (JSON-RPC over a local named pipe or loopback socket) to apply/verify/list from external tools | `dis-play api` + security review | **PLANNED** |
-| T14.2 | **Profile scheduling:** time-based auto-switch (e.g. "Gaming" 18:00–22:00, weekends) | scheduler + schedule schema | **PLANNED** |
-| T14.3 | **Audio switching** (separate subsystem per non-goals): map profile → audio output device | audio subsystem | **PLANNED (re-open required)** |
-| T14.4 | **Multiple adapters / GPU awareness** (when two GPUs are present): resolver already adapter-aware (OBSERVED) — needs UI to pick | adapter pick UI | **PLANNED** |
-| T14.5 | **Multi-PC sync** (per non-goals): only if the user explicitly re-opens the non-goal | sync protocol | **PLANNED (re-open required)** |
-| T14.6 | **Headless / service mode** (per non-goal): only if re-opened | service architecture | **PLANNED (re-open required)** |
+| T14.1 | **Automation / scripting API:** a small `dis-play api` mode (JSON-RPC over a local named pipe or loopback socket) to apply/verify/list from external tools | `dis-play api` + security review | **IN PROGRESS** |
+| T14.2 | **Profile scheduling:** time-based auto-switch (e.g. "Gaming" 18:00–22:00, weekends) | scheduler + schedule schema | **IN PROGRESS** |
+| T14.3 | **Audio switching** (separate subsystem per non-goals): map profile → audio output device | audio subsystem | **IN PROGRESS (re-opened — D-144)** |
+| T14.4 | **Multiple adapters / GPU awareness** (when two GPUs are present): resolver already adapter-aware (OBSERVED) — needs UI to pick | adapter pick UI | **IN PROGRESS** |
+| T14.5 | **Multi-PC sync** (per non-goals): only if the user explicitly re-opens the non-goal | sync protocol | **IN PROGRESS (re-opened — D-146)** |
+| T14.6 | **Headless / service mode** (per non-goal): only if re-opened | service architecture | **IN PROGRESS (re-opened — D-147)** |
 
 **API / feasibility notes (from `ROADMAP.md` §4):** T14.1 named-pipe or loopback TCP — **DOCUMENTED**; auth = local-user check only (**SPIKE**: security review). T14.2 timer + existing apply path (OBSERVED); schedule persistence = new config schema (**SPIKE**). T14.3 `MMDeviceAPI` / WinRT audio — **DOCUMENTED**; *only if re-opened* as a goal. T14.4 `QueryDisplayConfig` per adapter — **DOCUMENTED**; resolver is adapter-aware (OBSERVED). T14.5 network protocol — **UNKNOWN**; security model = **SPIKE**. T14.6 service architecture — **UNKNOWN**; would break the "no admin" principle.
 
 ## Gate (per sub-feature, not phase-wide)
 
-- [ ] Each sub-feature ships only after its own decision record (D-XXX) + OBSERVED/DOCUMENTED gate.
-- [ ] Re-opened **non-goals** (audio, sync, service) are explicitly re-approved in `STATUS.md` with a new decision ID before work starts.
+- [x] Each sub-feature ships only after its own decision record (D-XXX) + OBSERVED/DOCUMENTED gate. — **D-142 (T14.1), D-143 (T14.2), D-144 (T14.3), D-145 (T14.4), D-146 (T14.5), D-147 (T14.6)** recorded in `STATUS.md` before implementation.
+- [x] Re-opened **non-goals** (audio, sync, service) are explicitly re-approved in `STATUS.md` with a new decision ID before work starts. — **re-approved 2026-10-16 by user instruction** (audio → D-144, multi-PC sync → D-146, service/headless → D-147); recorded in `STATUS.md` §Decisions Made.
 
 ## Potential Blockers / Open Questions
 
@@ -43,12 +43,21 @@ Gap analysis (`ROADMAP.md` §3, row 12; master plan §22 + non-goals §3): autom
 
 ## Decisions Produced
 
-None yet. No decision IDs are reserved for this phase (`ROADMAP.md` §5.2 reserves D-131–D-136 for other phases). Each future sub-feature gets its own D-XXX when it is re-approved/approved.
+Recorded **2026-10-16** on user instruction to execute all Phase 14 tasks (the phase was explicitly re-opened; the three V1 non-goals were re-approved first, per the gate). Full text in `STATUS.md` §Decisions Made.
+
+| ID | Task | Decision (one-line) | Status |
+|---|---|---|---|
+| D-142 | T14.1 | Automation API = JSON-RPC 2.0 over a **local named pipe** `\\.\pipe\dis-play-api` (no listening TCP); same-user-only ACL; pure dispatch layer + thin pipe transport; gated `apply`/`recover` require `"confirm": true` | PENDING-EVIDENCE |
+| D-143 | T14.2 | Scheduling = additive `schedules.json` schema + a tray `SetTimer` poller; pure `active_schedule(now, schedules)`; applies only when the target differs from the active (lkg) profile; opt-in | PENDING-EVIDENCE |
+| D-144 | T14.3 | Audio switching (non-goal re-opened) = optional additive `DisplayEntry.audio_device`; enumerate via `MMDeviceAPI`, set default via best-effort `IPolicyConfig` (undocumented, SPIKE) with graceful skip | PENDING-EVIDENCE |
+| D-145 | T14.4 | Adapter/GPU awareness = read-only `adapters` command + optional additive `DisplayEntry.adapter` key honored by the resolver; adapter shown in `identity`/`verify`/`diagnose` | PENDING-EVIDENCE |
+| D-146 | T14.5 | Multi-PC sync (non-goal re-opened) = portable **export/import bundle** (`sync export`/`sync import`) with merge semantics — **no live network listener** (avoids the UNKNOWN security model) | PENDING-EVIDENCE |
+| D-147 | T14.6 | Headless/service mode (non-goal re-opened) = `service install|uninstall|status` via the Windows SCM + a `headless` apply mode; **requires admin** and explicitly breaks the V1 "no admin" principle | PENDING-EVIDENCE |
 
 ## Actual Results
 
-None — no tasks executed yet. Per user instruction (2026-09-26), documentation only: no new task or phase was executed.
+Executed 2026-10-16 (all six tasks) under user instruction. See `STATUS.md` §Current Work / §Last Completed Work for per-task results, test counts and evidence. Per-task gate evidence recorded as each task completes.
 
 ## Status
 
-**PLANNED (deferred, not started, 2026-09-26)** — tasks T14.1–T14.6 detailed from `ROADMAP.md` §4. Explicitly deferred until v1.0 + v1.3 are stable. No code executed.
+**IN PROGRESS (executing all six tasks, 2026-10-16).** Phase re-opened on user instruction; the three V1 non-goals (audio/sync/service) were re-approved with new decision IDs **before work started** (D-144/D-146/D-147). Each sub-feature carries its own decision record (D-142–D-147).
